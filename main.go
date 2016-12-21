@@ -28,7 +28,7 @@ func cleanArg(s string) string {
 	return strings.Trim(s, "-")
 }
 
-func makeArgs() map[string]string {
+func makeArgs() (string, map[string]string) {
 	// This is a hybrid of the raw os args and the flag parsing.
 	tmp := make(map[string]*string)
 	for _, a := range os.Args[1:] {
@@ -41,15 +41,21 @@ func makeArgs() map[string]string {
 	flag.Parse()
 
 	// Compile the parsed flags into a map.
+	cfg := ""
 	m := make(map[string]string)
 	for k, v := range tmp {
-		m[k] = *v;
+		if k == "config" {
+			cfg = *v;
+		} else {
+			m[k] = *v;
+		}
 	}
-	return m
+	return cfg, m
 }
 
 func main() {
-	args := makeArgs();
+	cfg, args := makeArgs();
+	fmt.Println("CFG", cfg);
 	fmt.Println("ARGS", args);
 
 	watcher, err := fsnotify.NewWatcher()
