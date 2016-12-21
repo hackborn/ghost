@@ -1,0 +1,15 @@
+<config>
+	<arg>
+		<watch>C:\work\dev\go\src\github.com\hackborn\broom_server</watch>
+		<build>C:\work\dev\go\src\github.com\hackborn\broom_server\server</build>
+		<run>server.exe</run>
+	</arg>
+	
+	<graph>
+		<watcher>
+			<folder>${watch}</folder>
+		</watcher>
+		<exec cmd="go" args="build" dir="${build}" />
+		<exec cmd="${run}" dir="${build}" />
+	</graph>
+</config>

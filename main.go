@@ -5,6 +5,7 @@ package main
 // https://blog.golang.org/pipelines
 
 import (
+	"flag"
 	"fmt"
 	"github.com/fsnotify/fsnotify"
 	"log"
@@ -12,19 +13,45 @@ import (
 	"os/exec"
 	"os/signal"
 	"time"
+	"strings"
 	"syscall"
+//	"github.com/hackborn/ghost/ghost"
 )
-
-// A single node in the processing graph.
-type Node interface {
-	Stop()
-}
 
 type Runner struct {
 	Cmd exec.Cmd
 }
 
+// Take an arg of the pattern "-str" and
+// clean it up -- trim hyphens and white space.
+func cleanArg(s string) string {
+	return strings.Trim(s, "-")
+}
+
+func makeArgs() map[string]string {
+	// This is a hybrid of the raw os args and the flag parsing.
+	tmp := make(map[string]*string)
+	for _, a := range os.Args[1:] {
+		i := strings.Index(a, "=")
+		if i > -1 {
+			key := cleanArg(a[:i])
+			tmp[key] = flag.String(key, "", "")
+		}
+	}
+	flag.Parse()
+
+	// Compile the parsed flags into a map.
+	m := make(map[string]string)
+	for k, v := range tmp {
+		m[k] = *v;
+	}
+	return m
+}
+
 func main() {
+	args := makeArgs();
+	fmt.Println("ARGS", args);
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err)
