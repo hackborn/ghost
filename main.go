@@ -8,14 +8,14 @@ import (
 	"flag"
 	"fmt"
 	"github.com/fsnotify/fsnotify"
+	"github.com/hackborn/ghost/graph"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
-	"time"
 	"strings"
 	"syscall"
-	"github.com/hackborn/ghost/graph"
+	"time"
 )
 
 type Runner struct {
@@ -45,20 +45,20 @@ func makeArgs() (string, map[string]string) {
 	m := make(map[string]string)
 	for k, v := range tmp {
 		if k == "config" {
-			cfg = *v;
+			cfg = *v
 		} else {
-			m[k] = *v;
+			m[k] = *v
 		}
 	}
 	return cfg, m
 }
 
 func main() {
-	cfg, args := makeArgs();
-	fmt.Println("CFG", cfg);
-	fmt.Println("ARGS", args);
+	cfg, args := makeArgs()
+	fmt.Println("CFG", cfg)
+	fmt.Println("ARGS", args)
 
-//	g, _ := graph.LoadFile("sds")
+	//	g, _ := graph.LoadFile("sds")
 	graph.Load("gulp")
 
 	watcher, err := fsnotify.NewWatcher()
@@ -68,23 +68,23 @@ func main() {
 	defer watcher.Close()
 
 	c := make(chan os.Signal, 2)
-    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-    go func() {
-        <-c
-//        cleanup()
-        fmt.Println("signal quit")
-        os.Exit(1)
-    }()
-    /*
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func(){
-	    for sig := range c {
-	    	fmt.Println("GOT SIGNAL", sig)
-	        // sig is a ^C, handle it
-	        log.Fatal("signal")
-	    }
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		//        cleanup()
+		fmt.Println("signal quit")
+		os.Exit(1)
 	}()
+	/*
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt)
+		go func(){
+		    for sig := range c {
+		    	fmt.Println("GOT SIGNAL", sig)
+		        // sig is a ^C, handle it
+		        log.Fatal("signal")
+		    }
+		}()
 	*/
 	fmt.Println("after signal notify")
 
@@ -133,27 +133,27 @@ func runBroomServer() {
 	cmd := exec.Command("C:/work/dev/go/src/github.com/hackborn/broom_server/server/server.exe")
 	cmd.Dir = "C:/work/dev/go/src/github.com/hackborn/broom_server/server"
 	cmd.Stdout = os.Stdout
-    cmd.Stderr = os.Stderr
-//	cmd.Run()
+	cmd.Stderr = os.Stderr
+	//	cmd.Run()
 
-    // How to stop:
-    // http://stackoverflow.com/questions/11886531/terminating-a-process-started-with-os-exec-in-golang
+	// How to stop:
+	// http://stackoverflow.com/questions/11886531/terminating-a-process-started-with-os-exec-in-golang
 	done := make(chan error, 1)
 	go func() {
-	    done <- cmd.Run()
+		done <- cmd.Run()
 	}()
 	select {
 	case <-time.After(10 * time.Second):
-	    if err := cmd.Process.Kill(); err != nil {
-	        log.Fatal("failed to kill: ", err)
-	    }
-	    log.Println("process killed as timeout reached")
+		if err := cmd.Process.Kill(); err != nil {
+			log.Fatal("failed to kill: ", err)
+		}
+		log.Println("process killed as timeout reached")
 	case err := <-done:
-	    if err != nil {
-	        log.Printf("process done with error = %v", err)
-	    } else {
-	        log.Print("process done gracefully without error")
-	    }
+		if err != nil {
+			log.Printf("process done with error = %v", err)
+		} else {
+			log.Print("process done gracefully without error")
+		}
 	}
 }
 
@@ -162,29 +162,29 @@ func runBroomServerOld() {
 		cmd := exec.Command("C:/work/dev/go/src/github.com/hackborn/broom_server/server/server.exe")
 		cmd.Dir = "C:/work/dev/go/src/github.com/hackborn/broom_server/server"
 		cmd.Stdout = os.Stdout
-	    cmd.Stderr = os.Stderr
+		cmd.Stderr = os.Stderr
 		cmd.Run()
-/*
-		stdout, err := cmd.StdoutPipe()
+		/*
+			stdout, err := cmd.StdoutPipe()
 
-		if err := cmd.Start(); err == nil {
-			b, _ := ioutil.ReadAll(cmd.Stdout)
-			fmt.Println("server:", string(b))
-		}
-		fmt.Println("done with server, err:", err)
-*/
-/*
-//		if err == nil {
-			err := cmd.Start()
-//		}		
-		if err != nil {
-			log.Println("runBroomServer() failed:", err)
-			log.Fatal(err)
-		} else {
-			log.Printf("Waiting for runBroomServer to finish...\n")
-			err = cmd.Wait()
-			log.Printf("runBroomServer finished with error: %v\n", err)
-		}
-*/
+			if err := cmd.Start(); err == nil {
+				b, _ := ioutil.ReadAll(cmd.Stdout)
+				fmt.Println("server:", string(b))
+			}
+			fmt.Println("done with server, err:", err)
+		*/
+		/*
+		   //		if err == nil {
+		   			err := cmd.Start()
+		   //		}
+		   		if err != nil {
+		   			log.Println("runBroomServer() failed:", err)
+		   			log.Fatal(err)
+		   		} else {
+		   			log.Printf("Waiting for runBroomServer to finish...\n")
+		   			err = cmd.Wait()
+		   			log.Printf("runBroomServer finished with error: %v\n", err)
+		   		}
+		*/
 	}()
 }

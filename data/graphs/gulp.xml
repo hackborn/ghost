@@ -1,17 +1,15 @@
 <graph>
-	<arg>
+	<args>
 		<watch>C:\work\dev\go\src\github.com\hackborn\broom_server</watch>
 		<build>C:\work\dev\go\src\github.com\hackborn\broom_server\server</build>
 		<run>server.exe</run>
-	</arg>
+	</args>
 	
-	<closer />
-	
-	<graph>
+	<nodes>
 		<watcher>
 			<folder>${watch}</folder>
 		</watcher>
 		<exec cmd="go" args="build" dir="${build}" />
 		<exec cmd="${run}" dir="${build}" />
-	</graph>
+	</nodes>
 </graph>

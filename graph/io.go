@@ -9,12 +9,25 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
 	"github.com/kardianos/osext"
+
+	"github.com/hackborn/ghost/node"
 )
+
+// A message passed between nodes.
+type builder struct {
+	graph *Graph
+	order []node.Node
+}
+
+func (b *builder) build() {
+    // For now there's no branching or multiple connections, so whatever
+    // order was specified in the file is the order I'll use.
+}
 
 // Find the graph with the given name and load it.
 func Load(n string) (*Graph, error) {
-	fmt.Println("load graph", n)
 	n = strings.ToLower(n)
 	p, err := osext.ExecutableFolder()
 	if err != nil {
@@ -27,7 +40,6 @@ func Load(n string) (*Graph, error) {
 
 // Construct a graph by loading from a filename.
 func LoadFile(filename string) (*Graph, error) {
-	fmt.Println("load file", filename)
 	xmlFile, err := os.Open(filename)
     if err != nil {
     	return nil, err
@@ -35,8 +47,8 @@ func LoadFile(filename string) (*Graph, error) {
 	defer xmlFile.Close()
 	decoder := xml.NewDecoder(xmlFile)
 
-	fmt.Println("decode...")
-	g := new(Graph)
+	var builder builder;
+	builder.graph = new(Graph)
 	for {
     	token, err := decoder.Token()
     	if token == nil {
@@ -51,47 +63,16 @@ func LoadFile(filename string) (*Graph, error) {
 
     	switch ele := token.(type) {
         	case xml.StartElement:
-        		fmt.Println("\tstart", ele.Name.Local)
-        		if ele.Name.Local == "arg" {
-        			decodeArgs(token, decoder, g)
+        		if ele.Name.Local == "args" {
+        			decodeArgs(token, decoder, &builder)
+        		} else if ele.Name.Local == "nodes" {
+        			decodeNodes(token, decoder, &builder)
         		}
-	        case xml.EndElement:
-        		fmt.Println("\tend?", ele.Name.Local)
 	   	}
     }
-    fmt.Println("DONZO!", g)
-	return g, nil
-}
-
-func decodeArgs(token xml.Token, decoder *xml.Decoder, g *Graph) {
-	name := ""
-	for {
-    	token, err := decoder.Token()
-    	if token == nil {
-    		if err == nil {
-	            continue
-    	    }
- 			if err == io.EOF {
-            	break
-        	}
-        	return
-    	}
-
-    	switch ele := token.(type) {
-        	case xml.StartElement:
-        		name = ele.Name.Local
-	        case xml.EndElement:
-	        	if ele.Name.Local == "arg" {
-	        		return
-	        	}
-	        case xml.CharData:
-	        	if name != "" {
-	        		a := Arg{name, string(ele)}
-	        		g.Args = append(g.Args, a)
-	        		name = ""
-	        	}
-	   	}
-    }
+    fmt.Println("DONZO!", builder.graph)
+    builder.build();
+	return builder.graph, nil
 }
 
 // Iterate the files in the path, loading any matching graph.
@@ -112,4 +93,75 @@ func loadFromPath(n string, p string) (*Graph, error) {
 func formatName(n string) string {
 	n = strings.TrimSuffix(n, filepath.Ext(n))
 	return strings.ToLower(n)
+}
+
+func decodeArgs(token xml.Token, decoder *xml.Decoder, builder *builder) {
+	name := ""
+	for {
+    	token, err := decoder.Token()
+    	if token == nil {
+    		if err == nil {
+	            continue
+    	    }
+ 			if err == io.EOF {
+            	break
+        	}
+        	return
+    	}
+
+    	switch ele := token.(type) {
+        	case xml.StartElement:
+        		name = ele.Name.Local
+	        case xml.EndElement:
+	        	if ele.Name.Local == "args" {
+	        		return
+	        	}
+	        case xml.CharData:
+	        	if name != "" {
+	        		a := Arg{name, string(ele)}
+	        		builder.graph.Args = append(builder.graph.Args, a)
+	        		name = ""
+	        	}
+	   	}
+    }
+}
+
+func decodeNodes(token xml.Token, decoder *xml.Decoder, builder *builder) {
+	for {
+    	token, err := decoder.Token()
+    	if token == nil {
+    		if err == nil {
+	            continue
+    	    }
+ 			if err == io.EOF {
+            	break
+        	}
+        	return
+    	}
+
+    	var n node.Node
+    	switch ele := token.(type) {
+        	case xml.StartElement:
+        		if ele.Name.Local == "watcher" {
+        			var v node.Watcher 
+        			v.Name = ele.Name.Local
+            		decoder.DecodeElement(&v, &ele)
+          			n = &v
+       			} else if ele.Name.Local == "exec" {
+        			var v node.Exec
+        			v.Name = ele.Name.Local
+            		decoder.DecodeElement(&v, &ele)
+            		if (&v).IsValid() {
+            			n = &v
+            		}
+       			}
+	        case xml.EndElement:
+	        	if ele.Name.Local == "nodes" {
+	        		return
+	        	}
+	   	}
+	   	if n != nil {
+	   		builder.order = append(builder.order, n)
+	   	}
+    }
 }
