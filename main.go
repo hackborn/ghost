@@ -15,7 +15,7 @@ import (
 	"time"
 	"strings"
 	"syscall"
-//	"github.com/hackborn/ghost/ghost"
+	"github.com/hackborn/ghost/graph"
 )
 
 type Runner struct {
@@ -57,6 +57,9 @@ func main() {
 	cfg, args := makeArgs();
 	fmt.Println("CFG", cfg);
 	fmt.Println("ARGS", args);
+
+//	g, _ := graph.LoadFile("sds")
+	graph.Load("gulp")
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {

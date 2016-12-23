@@ -1,4 +1,4 @@
-<config>
+<graph>
 	<arg>
 		<watch>C:\work\dev\go\src\github.com\hackborn\broom_server</watch>
 		<build>C:\work\dev\go\src\github.com\hackborn\broom_server\server</build>
@@ -12,4 +12,4 @@
 		<exec cmd="go" args="build" dir="${build}" />
 		<exec cmd="${run}" dir="${build}" />
 	</graph>
-</config>
+</graph>
