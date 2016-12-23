@@ -1,8 +1,11 @@
 package graph
 
 import (
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -23,9 +26,72 @@ func Load(n string) (*Graph, error) {
 }
 
 // Construct a graph by loading from a filename.
-func LoadFile(n string) (*Graph, error) {
-	fmt.Println("load file", n)
-	return nil, nil
+func LoadFile(filename string) (*Graph, error) {
+	fmt.Println("load file", filename)
+	xmlFile, err := os.Open(filename)
+    if err != nil {
+    	return nil, err
+	}
+	defer xmlFile.Close()
+	decoder := xml.NewDecoder(xmlFile)
+
+	fmt.Println("decode...")
+	g := new(Graph)
+	for {
+    	token, err := decoder.Token()
+    	if token == nil {
+    		if err == nil {
+	            continue
+    	    }
+ 			if err == io.EOF {
+            	break
+        	}
+        	return nil, err
+    	}
+
+    	switch ele := token.(type) {
+        	case xml.StartElement:
+        		fmt.Println("\tstart", ele.Name.Local)
+        		if ele.Name.Local == "arg" {
+        			decodeArgs(token, decoder, g)
+        		}
+	        case xml.EndElement:
+        		fmt.Println("\tend?", ele.Name.Local)
+	   	}
+    }
+    fmt.Println("DONZO!", g)
+	return g, nil
+}
+
+func decodeArgs(token xml.Token, decoder *xml.Decoder, g *Graph) {
+	name := ""
+	for {
+    	token, err := decoder.Token()
+    	if token == nil {
+    		if err == nil {
+	            continue
+    	    }
+ 			if err == io.EOF {
+            	break
+        	}
+        	return
+    	}
+
+    	switch ele := token.(type) {
+        	case xml.StartElement:
+        		name = ele.Name.Local
+	        case xml.EndElement:
+	        	if ele.Name.Local == "arg" {
+	        		return
+	        	}
+	        case xml.CharData:
+	        	if name != "" {
+	        		a := Arg{name, string(ele)}
+	        		g.Args = append(g.Args, a)
+	        		name = ""
+	        	}
+	   	}
+    }
 }
 
 // Iterate the files in the path, loading any matching graph.

@@ -17,7 +17,13 @@ type Node interface {
 	RequestAccess(data *RequestData)
 }
 
+type Arg struct {
+	Key string
+	Value string
+}
+
 type Graph struct {
+	Args	[]Arg
 	Nodes	[]Node
 }
 

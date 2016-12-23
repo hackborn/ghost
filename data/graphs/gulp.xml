@@ -5,6 +5,8 @@
 		<run>server.exe</run>
 	</arg>
 	
+	<closer />
+	
 	<graph>
 		<watcher>
 			<folder>${watch}</folder>
