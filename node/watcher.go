@@ -7,15 +7,22 @@ import (
 )
 
 type Folder struct {
-	Path string	`xml:",chardata"`
+	Path string `xml:",chardata"`
 }
 
 // Watch a folder path, emitting messages when it changes.
 type Watcher struct {
-	Name string		`xml:"name,attr"`
-	Folders []Folder 	`xml:"folder"`
-	input Channels
-	Channels		// Output
+	Name     string   `xml:"name,attr"`
+	Folders  []Folder `xml:"folder"`
+	input    Channels
+	Channels // Output
+}
+
+func (w *Watcher) ApplyArgs(cs ChangeString) {
+	for i := 0; i < len(w.Folders); i++ {
+		dst := &w.Folders[i]
+		dst.Path = cs.ChangeString(dst.Path)
+	}
 }
 
 func (w *Watcher) StartChannels(a StartArgs, inputs []Source) {

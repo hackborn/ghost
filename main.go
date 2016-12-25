@@ -53,9 +53,9 @@ func makeArgs() (string, map[string]string) {
 }
 
 func main() {
-//	cfg, args := makeArgs()
-//	fmt.Println("CFG", cfg)
-//	fmt.Println("ARGS", args)
+	//	cfg, args := makeArgs()
+	//	fmt.Println("CFG", cfg)
+	//	fmt.Println("ARGS", args)
 
 	//	g, _ := graph.LoadFile("sds")
 	g, gerr := graph.Load("gulp")
@@ -63,7 +63,7 @@ func main() {
 		fmt.Println("Error loading graph:", gerr)
 		return
 	}
-	if g ==  nil {
+	if g == nil {
 		fmt.Println("Unknown error loading graph:")
 		return
 	}
@@ -76,7 +76,7 @@ func main() {
 		<-c
 		//        cleanup()
 		fmt.Println("signal quit")
-		done<-true
+		done <- true
 	}()
 	/*
 		c := make(chan os.Signal, 1)
@@ -91,7 +91,7 @@ func main() {
 	*/
 	fmt.Println("after signal notify")
 
-//	runBroomServer()
+	//	runBroomServer()
 	fmt.Println("after RUN")
 	g.Start()
 	fmt.Println("after START")

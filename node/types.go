@@ -8,13 +8,13 @@ import (
 // Data sent out to Node.RequestAccess.
 type RequestArgs struct {
 	// Any files we're requesting access to.
-	Files	[]string
+	Files []string
 }
 
 // Data sent out to Node.Start.
 type StartArgs struct {
 	// A graph lock so we can wait for all nodes to finish running.
-	NodeWaiter	*sync.WaitGroup
+	NodeWaiter *sync.WaitGroup
 }
 
 // A message passed between nodes.
@@ -25,7 +25,7 @@ type Msg struct {
 // Sources can have multiple channels (but currently won't).
 type Source interface {
 	// Create and answer a new channel (adding it to the source).
-	NewChannel() (chan Msg)
+	NewChannel() chan Msg
 }
 
 // Bundle behaviour for managing Node input/output channels.
@@ -33,14 +33,20 @@ type Channels struct {
 	Out []chan Msg
 }
 
+// A generic interface for modifying a string.
+type ChangeString interface {
+	ChangeString(s string) string
+}
+
 // A single node in the processing graph.
 type Node interface {
-	NewChannel() (chan Msg)
+	ApplyArgs(cs ChangeString)
+	NewChannel() chan Msg
 	// Starting the graph goes through a two-step process on each
 	// node: First all channels are generated, then they are run.
 	StartChannels(a StartArgs, inputs []Source)
 	StartRunning(a StartArgs) error
-	// Received when a node is 
+	// Received when a node is
 	RequestAccess(data *RequestArgs)
 }
 
@@ -50,7 +56,7 @@ func (cs *Channels) Add(c chan Msg) {
 	}
 }
 
-func (cs *Channels) NewChannel() (chan Msg) {
+func (cs *Channels) NewChannel() chan Msg {
 	c := make(chan Msg)
 	cs.Add(c)
 	return c
@@ -67,7 +73,7 @@ func (cs *Channels) CloseChannels() {
 // Close and clear out my channels.
 func (cs *Channels) SendMsg(msg Msg) {
 	for _, c := range cs.Out {
-		c<-msg
+		c <- msg
 	}
 }
 
@@ -77,6 +83,6 @@ func (cs *Channels) Test() {
 	for _, c := range cs.Out {
 		fmt.Println("\ttest channel")
 		var m Msg
-		c<-m
+		c <- m
 	}
 }

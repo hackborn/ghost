@@ -1,28 +1,30 @@
 package graph
 
 import (
-//	"fmt"
-	"sync"
+	//	"fmt"
 	"github.com/hackborn/ghost/node"
+	"sync"
 )
-
-// A user argument to the graph.
-type Arg struct {
-	Key string
-	Value string
-}
 
 // The complete graph.
 type Graph struct {
-	Args		[]Arg
 	// All nodes that were created for the graph.
-	_nodes		[]graphnode
+	_nodes []graphnode
 	// The collection of channels to my root nodes
-	output		node.Channels
-	nodeWaiter	sync.WaitGroup
+	output     node.Channels
+	nodeWaiter sync.WaitGroup
 }
 
-func (g *Graph) NewChannel() (chan node.Msg) {
+func (g *Graph) ApplyArgs(cs node.ChangeString) {
+	for i := 0; i < len(g._nodes); i++ {
+		dst := &(g._nodes[i])
+		if dst.node != nil {
+			dst.node.ApplyArgs(cs)
+		}
+	}
+}
+
+func (g *Graph) NewChannel() chan node.Msg {
 	return g.output.NewChannel()
 }
 
@@ -33,7 +35,7 @@ func (g *Graph) add(n node.Node) {
 }
 
 func (g *Graph) addInput(n node.Node, s node.Source) {
-	for i := 0 ; i < len(g._nodes); i++ {
+	for i := 0; i < len(g._nodes); i++ {
 		dst := &(g._nodes[i])
 		if dst.node == n {
 			// XXX Check that the source is not a duplicate
@@ -71,6 +73,6 @@ func (g *Graph) Stop() {
 
 // Describe the structure of the graph.
 type graphnode struct {
-	node		node.Node
-	inputs		[]node.Source
+	node   node.Node
+	inputs []node.Source
 }
