@@ -50,7 +50,7 @@ func (b *builder) build() {
 
 func (b *builder) ChangeString(s string) string {
 	for k, v := range b.args {
-		s = strings.Replace(s, k, v, -1)	
+		s = strings.Replace(s, "${" + k + "}", v, -1)	
 	}
 	return s
 }

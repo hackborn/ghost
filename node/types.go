@@ -82,7 +82,6 @@ func (cs *Channels) Test() {
 	fmt.Println("test channels")
 	for _, c := range cs.Out {
 		fmt.Println("\ttest channel")
-		var m Msg
-		c <- m
+		c <- Msg{}
 	}
 }
