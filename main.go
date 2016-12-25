@@ -7,7 +7,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/fsnotify/fsnotify"
 	"github.com/hackborn/ghost/graph"
 	"log"
 	"os"
@@ -69,12 +68,6 @@ func main() {
 		return
 	}
 
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer watcher.Close()
-
 	done := make(chan bool)
 
 	c := make(chan os.Signal, 2)
@@ -98,30 +91,12 @@ func main() {
 	*/
 	fmt.Println("after signal notify")
 
-	go func() {
-		for {
-			select {
-			case event := <-watcher.Events:
-				log.Println("event:", event)
-				if event.Op&fsnotify.Write == fsnotify.Write {
-					log.Println("modified file:", event.Name)
-				}
-			case err := <-watcher.Errors:
-				log.Println("error:", err)
-			}
-		}
-	}()
-
-	err = watcher.Add("C:/work/dev/go/src/github.com/hackborn/ghost")
-	if err != nil {
-		log.Fatal(err)
-	}
-
 //	runBroomServer()
 	fmt.Println("after RUN")
 	g.Start()
 	fmt.Println("after START")
 	<-done
+	g.Stop()
 	fmt.Println("done, son!")
 }
 

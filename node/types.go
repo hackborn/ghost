@@ -1,6 +1,7 @@
 package node
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -23,35 +24,52 @@ type Msg struct {
 // Provide access to the source feeding into a node.
 // Sources can have multiple channels (but currently won't).
 type Source interface {
-	// Create the channel at the index. Nil for no channel.
-	Connect() (chan Msg)
+	// Create and answer a new channel (adding it to the source).
+	NewChannel() (chan Msg)
 }
 
-// Bundle behaviour for managing Node output channels.
-type Output struct {
+// Bundle behaviour for managing Node input/output channels.
+type Channels struct {
 	Out []chan Msg
 }
 
 // A single node in the processing graph.
 type Node interface {
-	Connect() (chan Msg)
-	// The channel is sent true when the node should stop.
-	Start(a StartArgs, inputs []Source)
+	NewChannel() (chan Msg)
+	// Starting the graph goes through a two-step process on each
+	// node: First all channels are generated, then they are run.
+	StartChannels(a StartArgs, inputs []Source)
+	StartRunning(a StartArgs) error
 	// Received when a node is 
 	RequestAccess(data *RequestArgs)
 }
 
-// Bundle behaviour for managing Node output channels.
-func (o *Output) Add() (chan Msg) {
+func (cs *Channels) Add(c chan Msg) {
+	if c != nil {
+		cs.Out = append(cs.Out, c)
+	}
+}
+
+func (cs *Channels) NewChannel() (chan Msg) {
 	c := make(chan Msg)
-	o.Out = append(o.Out, c)
+	cs.Add(c)
 	return c
 }
 
 // Close and clear out my channels.
-func (o *Output) Close() {
-	for _, c := range o.Out {
+func (cs *Channels) Close() {
+	for _, c := range cs.Out {
 		close(c)
 	}
-	o.Out = o.Out[:0]
+	cs.Out = cs.Out[:0]
+}
+
+// Close and clear out my channels.
+func (cs *Channels) Test() {
+	fmt.Println("test channels")
+	for _, c := range cs.Out {
+		fmt.Println("\ttest channel")
+		var m Msg
+		c<-m
+	}
 }

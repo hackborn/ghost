@@ -10,15 +10,44 @@ type Exec struct {
 	Cmd string		`xml:"cmd,attr"`
 	Args string		`xml:"args,attr"`
 	Dir string		`xml:"dir,attr"`
-	output Output
+	input Channels
+	Channels		// Output
 }
 
 func (n *Exec) IsValid() bool {
 	return len(n.Cmd) > 0
 }
 
+/*
 func (e *Exec) Connect() (chan Msg) {
 	return e.output.Add()
+}
+*/
+
+func (e *Exec) StartChannels(a StartArgs, inputs []Source) {
+	// No inputs means this node is never hit, so ignore.
+	if len(inputs) <= 0 {
+		return
+	}
+	// If we want multiple inputs, we'll need to expand the running
+	// code to handle merging.
+	if len(inputs) != 1 {
+		fmt.Println("node.Exec.Start() must have 1 input (for now)", len(inputs))
+		return
+	}
+
+	e.input.Close()
+	for _, i := range inputs {
+		e.input.Add(i.NewChannel())
+	}
+}
+
+func (e *Exec) StartRunning(a StartArgs) error {
+	if len(e.input.Out) <= 0 {
+		return nil
+	}
+	fmt.Println("Start exec", e, "ins", len(e.input.Out), "outs", len(e.Out))
+	return nil
 }
 
 func (e *Exec) Start(a StartArgs, inputs []Source) {
