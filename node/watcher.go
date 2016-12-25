@@ -19,7 +19,7 @@ func (w *Watcher) Connect() (chan Msg) {
 	return w.output.Add()
 }
 
-func (w *Watcher) Start(inputs []Source) {
+func (w *Watcher) Start(a StartArgs, inputs []Source) {
 	fmt.Println("Start watcher")
 	if len(inputs) != 1 {
 		fmt.Println("node.Watcher.Start() must have 1 input (for now)", len(inputs))

@@ -21,7 +21,7 @@ func (e *Exec) Connect() (chan Msg) {
 	return e.output.Add()
 }
 
-func (e *Exec) Start(inputs []Source) {
+func (e *Exec) Start(a StartArgs, inputs []Source) {
 	fmt.Println("exec cmd", e.Cmd, "args", e.Args, "dir", e.Dir)
 	if len(inputs) != 1 {
 		fmt.Println("node.Exec.Start() must have 1 input (for now)", len(inputs))

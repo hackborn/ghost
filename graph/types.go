@@ -2,6 +2,7 @@ package graph
 
 import (
 //	"fmt"
+	"sync"
 	"github.com/hackborn/ghost/node"
 )
 
@@ -13,12 +14,13 @@ type Arg struct {
 
 // The complete graph.
 type Graph struct {
-	Args	[]Arg
+	Args		[]Arg
 	// All nodes that were created for the graph.
-	_nodes	[]graphnode
-	done	chan bool
+	_nodes		[]graphnode
+	done		chan bool
 	// The collection of channels to my root nodes
-	output	node.Output
+	output		node.Output
+	nodeWaiter	sync.WaitGroup
 }
 
 func (g *Graph) Connect() (chan node.Msg) {
@@ -43,25 +45,29 @@ func (g *Graph) addInput(n node.Node, s node.Source) {
 
 func (g *Graph) Start() {
 	g.Stop()
-	g.done = make(chan bool)
+//	g.done = make(chan bool)
+	a := node.StartArgs{&g.nodeWaiter}
 	for i := 0; i < len(g._nodes); i++ {
 		n := &(g._nodes[i])
 		if n.node != nil && len(n.inputs) > 0 {
-			n.node.Start(n.inputs)
+			n.node.Start(a, n.inputs)
 		}
 	}
 }
 
 func (g *Graph) Stop() {
+	g.output.Close()
+	g.nodeWaiter.Wait()
+
 	// XXX This is a non-blocking send, but it's currently unclear
 	// to me if everyone listening to the channel will get the message,
 	// or only 1 listener.
+/*
 	select {
 		case g.done<-true:
 		default:
 	}
-	// I have no idea how to wait for everyone to stop
-	// Now I know -- sync.WaitGroup
+*/
 }
 
 // Describe the structure of the graph.
