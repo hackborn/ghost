@@ -3,7 +3,7 @@ package graph
 import (
 	"encoding/xml"
 	"errors"
-	"fmt"
+//	"fmt"
 	"io"
 	"os"
 	"path"
@@ -24,6 +24,25 @@ type builder struct {
 func (b *builder) build() {
     // For now there's no branching or multiple connections, so whatever
     // order was specified in the file is the order I'll use.
+    if b.graph == nil {
+    	return
+    }
+
+    // Construct the inputs for each node. Right now it's very simple,
+    // a single channel connection between each node based on the order
+    // found in the graph file.
+    var prev node.Node = nil
+    for _, n := range b.order {
+    	if n != nil {
+    		if prev == nil {
+    			// If this is the first, then the graph is the input.
+    			b.graph.addInput(n, b.graph)
+    		} else {
+    			b.graph.addInput(n, prev)
+    		}
+    		prev = n;
+    	}
+    }
 }
 
 // Find the graph with the given name and load it.
@@ -70,8 +89,8 @@ func LoadFile(filename string) (*Graph, error) {
         		}
 	   	}
     }
-    fmt.Println("DONZO!", builder.graph)
     builder.build();
+//    fmt.Println("DONZO!", builder.graph)
 	return builder.graph, nil
 }
 
@@ -161,6 +180,7 @@ func decodeNodes(token xml.Token, decoder *xml.Decoder, builder *builder) {
 	        	}
 	   	}
 	   	if n != nil {
+	   		builder.graph.add(n)
 	   		builder.order = append(builder.order, n)
 	   	}
     }

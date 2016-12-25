@@ -54,12 +54,20 @@ func makeArgs() (string, map[string]string) {
 }
 
 func main() {
-	cfg, args := makeArgs()
-	fmt.Println("CFG", cfg)
-	fmt.Println("ARGS", args)
+//	cfg, args := makeArgs()
+//	fmt.Println("CFG", cfg)
+//	fmt.Println("ARGS", args)
 
 	//	g, _ := graph.LoadFile("sds")
-	graph.Load("gulp")
+	g, gerr := graph.Load("gulp")
+	if gerr != nil {
+		fmt.Println("Error loading graph:", gerr)
+		return
+	}
+	if g ==  nil {
+		fmt.Println("Unknown error loading graph:")
+		return
+	}
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -67,13 +75,15 @@ func main() {
 	}
 	defer watcher.Close()
 
+	done := make(chan bool)
+
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
 		//        cleanup()
 		fmt.Println("signal quit")
-		os.Exit(1)
+		done<-true
 	}()
 	/*
 		c := make(chan os.Signal, 1)
@@ -107,10 +117,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	runBroomServer()
-
-	done := make(chan bool)
+//	runBroomServer()
+	fmt.Println("after RUN")
+	g.Start()
+	fmt.Println("after START")
 	<-done
+	fmt.Println("done, son!")
 }
 
 func buildBroomTools() {
