@@ -18,12 +18,6 @@ func (n *Exec) IsValid() bool {
 	return len(n.Cmd) > 0
 }
 
-/*
-func (e *Exec) Connect() (chan Msg) {
-	return e.output.Add()
-}
-*/
-
 func (e *Exec) StartChannels(a StartArgs, inputs []Source) {
 	// No inputs means this node is never hit, so ignore.
 	if len(inputs) <= 0 {
@@ -36,17 +30,37 @@ func (e *Exec) StartChannels(a StartArgs, inputs []Source) {
 		return
 	}
 
-	e.input.Close()
+	e.input.CloseChannels()
 	for _, i := range inputs {
 		e.input.Add(i.NewChannel())
 	}
 }
 
 func (e *Exec) StartRunning(a StartArgs) error {
-	if len(e.input.Out) <= 0 {
+	if len(e.input.Out) != 1 {
 		return nil
 	}
 	fmt.Println("Start exec", e, "ins", len(e.input.Out), "outs", len(e.Out))
+
+	a.NodeWaiter.Add(1)
+	go func() {
+		fmt.Println("start exec func")
+		defer a.NodeWaiter.Done()
+		defer fmt.Println("end exec func")
+		defer e.CloseChannels()
+
+		for {
+			select {
+			case msg, imore := <-e.input.Out[0]:
+				if imore {
+					fmt.Println("exec msg", msg)
+				} else {
+					return
+				}
+			}
+		}
+	}()
+
 	return nil
 }
 

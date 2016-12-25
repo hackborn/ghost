@@ -57,11 +57,18 @@ func (cs *Channels) NewChannel() (chan Msg) {
 }
 
 // Close and clear out my channels.
-func (cs *Channels) Close() {
+func (cs *Channels) CloseChannels() {
 	for _, c := range cs.Out {
 		close(c)
 	}
 	cs.Out = cs.Out[:0]
+}
+
+// Close and clear out my channels.
+func (cs *Channels) SendMsg(msg Msg) {
+	for _, c := range cs.Out {
+		c<-msg
+	}
 }
 
 // Close and clear out my channels.

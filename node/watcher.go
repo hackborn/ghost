@@ -18,12 +18,6 @@ type Watcher struct {
 	Channels		// Output
 }
 
-/*
-func (w *Watcher) Connect() (chan Msg) {
-	return w.output.Add()
-}
-*/
-
 func (w *Watcher) StartChannels(a StartArgs, inputs []Source) {
 	// No inputs means this node is never hit, so ignore.
 	if len(inputs) <= 0 {
@@ -36,7 +30,7 @@ func (w *Watcher) StartChannels(a StartArgs, inputs []Source) {
 		return
 	}
 
-	w.input.Close()
+	w.input.CloseChannels()
 	for _, i := range inputs {
 		w.input.Add(i.NewChannel())
 	}
@@ -58,13 +52,13 @@ func (w *Watcher) StartRunning(a StartArgs) error {
 	go func() {
 		fmt.Println("start watch func")
 		defer a.NodeWaiter.Done()
-		defer fmt.Println("REAL END")
+		defer fmt.Println("end watcher func")
+		defer w.CloseChannels()
 		defer watcher.Close()
 
 		for {
 			select {
 			case _, imore := <-w.input.Out[0]:
-//				fmt.Println("Got an input msg", input, "err", imore)
 				if !imore {
 					return
 				}
@@ -72,6 +66,7 @@ func (w *Watcher) StartRunning(a StartArgs) error {
 				fmt.Println("event:", event)
 				if event.Op&fsnotify.Write == fsnotify.Write {
 					fmt.Println("modified file:", event.Name)
+					w.SendMsg(Msg{})
 				}
 			case err := <-watcher.Errors:
 				fmt.Println("error:", err)
