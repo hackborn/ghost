@@ -2,12 +2,32 @@ package graph
 
 import (
 	//	"fmt"
-	"github.com/hackborn/ghost/node"
+	"encoding/xml"
+	"strings"
 	"sync"
+	"github.com/hackborn/ghost/node"
 )
+
+type Arg struct {
+	// As far as I can tell there's no xml tag to directly grab the name of the XML tag.
+	XMLName xml.Name
+	Value   string `xml:",chardata"`
+}
+
+type Args struct {
+	Arg []Arg `xml:",any"`
+}
+
+func (a Args) ChangeString(s string) string {
+	for _, v := range a.Arg {
+		s = strings.Replace(s, "${"+v.XMLName.Local+"}", v.Value, -1)
+	}
+	return s
+}
 
 // The complete graph.
 type Graph struct {
+	args Args
 	// All nodes that were created for the graph.
 	_nodes []graphnode
 	// The collection of channels to my root nodes

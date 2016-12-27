@@ -3,7 +3,6 @@ package graph
 import (
 	"encoding/xml"
 	"errors"
-//	"fmt"
 	"io"
 	"os"
 	"path"
@@ -18,7 +17,6 @@ import (
 // A message passed between nodes.
 type builder struct {
 	graph *Graph
-	args map[string]string
 	order []node.Node
 }
 
@@ -29,7 +27,7 @@ func (b *builder) build() {
 		return
 	}
 
-	b.graph.ApplyArgs(b)
+	b.graph.ApplyArgs(b.graph.args)
 
 	// Construct the inputs for each node. Right now it's very simple,
 	// a single channel connection between each node based on the order
@@ -47,14 +45,6 @@ func (b *builder) build() {
 		}
 	}
 }
-
-func (b *builder) ChangeString(s string) string {
-	for k, v := range b.args {
-		s = strings.Replace(s, "${" + k + "}", v, -1)	
-	}
-	return s
-}
-
 
 // Find the graph with the given name and load it.
 func Load(n string) (*Graph, error) {
@@ -79,7 +69,6 @@ func LoadFile(filename string) (*Graph, error) {
 
 	var builder builder
 	builder.graph = new(Graph)
-	builder.args = make(map[string]string)
 
 	for {
 		token, err := decoder.Token()
@@ -96,7 +85,7 @@ func LoadFile(filename string) (*Graph, error) {
 		switch ele := token.(type) {
 		case xml.StartElement:
 			if ele.Name.Local == "args" {
-				decodeArgs(token, decoder, &builder)
+				decoder.DecodeElement(&builder.graph.args, &ele)
 			} else if ele.Name.Local == "nodes" {
 				decodeNodes(token, decoder, &builder)
 			}
@@ -125,36 +114,6 @@ func loadFromPath(n string, p string) (*Graph, error) {
 func formatName(n string) string {
 	n = strings.TrimSuffix(n, filepath.Ext(n))
 	return strings.ToLower(n)
-}
-
-func decodeArgs(token xml.Token, decoder *xml.Decoder, builder *builder) {
-	name := ""
-	for {
-		token, err := decoder.Token()
-		if token == nil {
-			if err == nil {
-				continue
-			}
-			if err == io.EOF {
-				break
-			}
-			return
-		}
-
-		switch ele := token.(type) {
-		case xml.StartElement:
-			name = ele.Name.Local
-		case xml.EndElement:
-			if ele.Name.Local == "args" {
-				return
-			}
-		case xml.CharData:
-			if name != "" {
-				builder.args[name] = string(ele)
-				name = ""
-			}
-		}
-	}
 }
 
 func decodeNodes(token xml.Token, decoder *xml.Decoder, builder *builder) {
