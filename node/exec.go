@@ -2,16 +2,20 @@ package node
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 )
 
 // Run a command.
 type Exec struct {
-	Name     string `xml:"name,attr"`
-	Cmd      string `xml:"cmd,attr"`
-	Args     string `xml:"args,attr"`
-	Dir      string `xml:"dir,attr"`
-	input    Channels
-	Channels // Output
+	Name      string `xml:"name,attr"`
+	Cmd       string `xml:"cmd,attr"`
+	Args      string `xml:"args,attr"`
+	Dir       string `xml:"dir,attr"`
+	Interrupt bool   `xml:"interrupt,attr"`
+	Rerun     bool   `xml:"rerun,attr"`
+	input     Channels
+	Channels  // Output
 }
 
 func (n *Exec) IsValid() bool {
@@ -48,11 +52,20 @@ func (e *Exec) StartRunning(a StartArgs) error {
 	}
 	fmt.Println("Start exec", e, "ins", len(e.input.Out), "outs", len(e.Out))
 
+	cmd := exec.Command(e.Cmd)
+	cmd.Dir = e.Dir
+	if len(e.Args) > 0 {
+		cmd.Args = append(cmd.Args, e.Args)
+	}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
 	a.NodeWaiter.Add(1)
 	go func() {
 		fmt.Println("start exec func")
 		defer a.NodeWaiter.Done()
 		defer fmt.Println("end exec func")
+		defer execCleanup(cmd)
 		defer e.CloseChannels()
 
 		for {
@@ -60,6 +73,8 @@ func (e *Exec) StartRunning(a StartArgs) error {
 			case msg, imore := <-e.input.Out[0]:
 				if imore {
 					fmt.Println("exec msg", msg)
+					err := cmd.Run()
+					fmt.Println("run err", err)
 				} else {
 					return
 				}
@@ -68,6 +83,12 @@ func (e *Exec) StartRunning(a StartArgs) error {
 	}()
 
 	return nil
+}
+
+func execCleanup(cmd *exec.Cmd) {
+	if cmd != nil && cmd.Process != nil {
+		cmd.Process.Kill()
+	}
 }
 
 func (e *Exec) Start(a StartArgs, inputs []Source) {

@@ -71,7 +71,7 @@ func loadGraph() (*graph.Graph, error) {
 
 // Load graph arguments from the command line.
 func loadCla(args *graph.Args) {
-	if len(os.Args) <=2 {
+	if len(os.Args) <= 2 {
 		return
 	}
 	fs := flag.NewFlagSet("fs", flag.ContinueOnError)

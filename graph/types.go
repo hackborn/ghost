@@ -3,9 +3,9 @@ package graph
 import (
 	//	"fmt"
 	"encoding/xml"
+	"github.com/hackborn/ghost/node"
 	"strings"
 	"sync"
-	"github.com/hackborn/ghost/node"
 )
 
 type Arg struct {

@@ -9,7 +9,7 @@
 		<watcher>
 			<folder>${watch}</folder>
 		</watcher>
-		<exec cmd="go" args="build" dir="${build}" />
+		<exec cmd="go" args="build" dir="${build}" interrupt="false" rerun="false" />
 		<exec cmd="${run}" dir="${build}" />
 	</nodes>
 </graph>
