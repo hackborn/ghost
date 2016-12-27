@@ -1,9 +1,5 @@
 package main
 
-// A little reading I need to do:
-// https://tour.golang.org/concurrency/2
-// https://blog.golang.org/pipelines
-
 import (
 	"flag"
 	"fmt"
@@ -12,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -21,44 +16,8 @@ type Runner struct {
 	Cmd exec.Cmd
 }
 
-// Take an arg of the pattern "-str" and
-// clean it up -- trim hyphens and white space.
-func cleanArg(s string) string {
-	return strings.Trim(s, "-")
-}
-
-func makeArgs() (string, map[string]string) {
-	// This is a hybrid of the raw os args and the flag parsing.
-	tmp := make(map[string]*string)
-	for _, a := range os.Args[1:] {
-		i := strings.Index(a, "=")
-		if i > -1 {
-			key := cleanArg(a[:i])
-			tmp[key] = flag.String(key, "", "")
-		}
-	}
-	flag.Parse()
-
-	// Compile the parsed flags into a map.
-	cfg := ""
-	m := make(map[string]string)
-	for k, v := range tmp {
-		if k == "config" {
-			cfg = *v
-		} else {
-			m[k] = *v
-		}
-	}
-	return cfg, m
-}
-
 func main() {
-	//	cfg, args := makeArgs()
-	//	fmt.Println("CFG", cfg)
-	//	fmt.Println("ARGS", args)
-
-	//	g, _ := graph.LoadFile("sds")
-	g, gerr := graph.Load("gulp")
+	g, gerr := loadGraph()
 	if gerr != nil {
 		fmt.Println("Error loading graph:", gerr)
 		return
@@ -98,6 +57,32 @@ func main() {
 	<-done
 	g.Stop()
 	fmt.Println("done, son!")
+}
+
+func loadGraph() (*graph.Graph, error) {
+	// 1. Load graph based on the command line
+	// Provide defaults for now
+	graph_name := "gulp"
+	if len(os.Args) > 1 {
+		graph_name = os.Args[1]
+	}
+	return graph.Load(graph_name, loadCla)
+}
+
+// Load graph arguments from the command line.
+func loadCla(args *graph.Args) {
+	if len(os.Args) <=2 {
+		return
+	}
+	fs := flag.NewFlagSet("fs", flag.ContinueOnError)
+	var values []*string
+	for _, a := range args.Arg {
+		values = append(values, fs.String(a.XMLName.Local, a.Value, a.Usage))
+	}
+	fs.Parse(os.Args[2:])
+	for i := 0; i < len(values); i++ {
+		args.Arg[i].Value = *(values[i])
+	}
 }
 
 func buildBroomTools() {

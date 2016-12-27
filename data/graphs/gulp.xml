@@ -1,6 +1,6 @@
 <graph>
 	<args>
-		<watch>C:\work\dev\go\src\github.com\hackborn\broom_server</watch>
+		<watch usage="Directory to watch">C:\work\dev\go\src\github.com\hackborn\broom_server</watch>
 		<build>C:\work\dev\go\src\github.com\hackborn\broom_server\server</build>
 		<run>server.exe</run>
 	</args>

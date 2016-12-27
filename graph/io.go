@@ -20,14 +20,17 @@ type builder struct {
 	order []node.Node
 }
 
-func (b *builder) build() {
+func (b *builder) build(la LoadArgs) {
 	// For now there's no branching or multiple connections, so whatever
 	// order was specified in the file is the order I'll use.
 	if b.graph == nil {
 		return
 	}
 
-	b.graph.ApplyArgs(b.graph.args)
+	if la != nil {
+		la(&b.graph.Args)
+	}
+	b.graph.ApplyArgs(b.graph.Args)
 
 	// Construct the inputs for each node. Right now it's very simple,
 	// a single channel connection between each node based on the order
@@ -47,7 +50,7 @@ func (b *builder) build() {
 }
 
 // Find the graph with the given name and load it.
-func Load(n string) (*Graph, error) {
+func Load(n string, la LoadArgs) (*Graph, error) {
 	n = strings.ToLower(n)
 	p, err := osext.ExecutableFolder()
 	if err != nil {
@@ -55,11 +58,11 @@ func Load(n string) (*Graph, error) {
 	}
 	// Search every location with graphs for the requested.
 	p = path.Join(p, "data", "graphs")
-	return loadFromPath(n, p)
+	return loadFromPath(n, p, la)
 }
 
 // Construct a graph by loading from a filename.
-func LoadFile(filename string) (*Graph, error) {
+func LoadFile(filename string, la LoadArgs) (*Graph, error) {
 	xmlFile, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -85,25 +88,25 @@ func LoadFile(filename string) (*Graph, error) {
 		switch ele := token.(type) {
 		case xml.StartElement:
 			if ele.Name.Local == "args" {
-				decoder.DecodeElement(&builder.graph.args, &ele)
+				decoder.DecodeElement(&builder.graph.Args, &ele)
 			} else if ele.Name.Local == "nodes" {
 				decodeNodes(token, decoder, &builder)
 			}
 		}
 	}
-	builder.build()
+	builder.build(la)
 	//    fmt.Println("DONZO!", builder.graph)
 	return builder.graph, nil
 }
 
 // Iterate the files in the path, loading any matching graph.
-func loadFromPath(n string, p string) (*Graph, error) {
+func loadFromPath(n string, p string, la LoadArgs) (*Graph, error) {
 	p = path.Join(p, "*.xml")
 	files, _ := filepath.Glob(p)
 	for _, f := range files {
 		b := formatName(filepath.Base(f))
 		if n == b {
-			return LoadFile(f)
+			return LoadFile(f, la)
 		}
 	}
 	return nil, errors.New("No match")
