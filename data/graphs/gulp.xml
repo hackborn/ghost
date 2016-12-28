@@ -1,15 +1,24 @@
 <graph>
+	<!-- Command line args that can be passed into the app when this graph is selected.
+	Args names can't conflict with any names in macros. -->
 	<args>
 		<watch usage="Directory to watch">C:\work\dev\go\src\github.com\hackborn\broom_server</watch>
-		<build>C:\work\dev\go\src\github.com\hackborn\broom_server\server</build>
+		<build usage="Directory under the watch path that contains the file to build">server</build>
 		<run>server.exe</run>
 	</args>
+
+	<!-- Macros that can be used to make values in the nodes a little cleaner.
+	Macro names can't conflict with any names in args. -->
+	<macros>
+		<build_folder>${watch}\${build}</build_folder>
+		<shared>${watch}\${build}\${run}</shared>
+	</macros>
 	
 	<nodes>
 		<watcher>
 			<folder>${watch}</folder>
 		</watcher>
-		<exec cmd="go" args="build" dir="${build}" interrupt="false" rerun="false" />
-		<exec cmd="${run}" dir="${build}" />
+		<exec cmd="go" args="build" dir="${build_folder}" interrupt="false" rerun="false" />
+		<exec cmd="${run}" dir="${build_folder}" />
 	</nodes>
 </graph>

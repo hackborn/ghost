@@ -30,7 +30,9 @@ func (b *builder) build(la LoadArgs) {
 	if la != nil {
 		la(&b.graph.Args)
 	}
-	b.graph.ApplyArgs(b.graph.Args)
+	b.graph.Macros.Expand(b.graph.Args)
+	b.graph.Expand(b.graph.Args)
+	b.graph.Expand(b.graph.Macros)
 
 	// Construct the inputs for each node. Right now it's very simple,
 	// a single channel connection between each node based on the order
@@ -89,6 +91,8 @@ func LoadFile(filename string, la LoadArgs) (*Graph, error) {
 		case xml.StartElement:
 			if ele.Name.Local == "args" {
 				decoder.DecodeElement(&builder.graph.Args, &ele)
+			} else if ele.Name.Local == "macros" {
+				decoder.DecodeElement(&builder.graph.Macros, &ele)
 			} else if ele.Name.Local == "nodes" {
 				decodeNodes(token, decoder, &builder)
 			}
