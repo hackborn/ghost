@@ -1,8 +1,8 @@
 package graph
 
 import (
-	//	"fmt"
 	"encoding/xml"
+	"fmt"
 	"github.com/hackborn/ghost/node"
 	"strings"
 	"sync"
@@ -15,7 +15,7 @@ type Arg struct {
 	Usage   string `xml:"usage,attr"`
 	// This has been added to Go1.8. When that's released, I can
 	// use this to simplify (i.e. eliminate) a lot of the parsing.
-//	Attrs   []xml.Attr `xml:",any,attr"`
+	//	Attrs   []xml.Attr `xml:",any,attr"`
 }
 
 type Args struct {
@@ -51,12 +51,13 @@ type LoadArgs func(*Args)
 
 // The complete graph.
 type Graph struct {
-	Args Args
+	Args   Args
 	Macros Macros
 	// All nodes that were created for the graph.
 	_nodes []graphnode
 	// The collection of channels to my root nodes
 	output     node.Channels
+	control    node.Channels
 	nodeWaiter sync.WaitGroup
 }
 
@@ -76,8 +77,19 @@ func (g *Graph) Expand(cs node.ChangeString) {
 	}
 }
 
+// Source interface
 func (g *Graph) NewChannel() chan node.Msg {
 	return g.output.NewChannel()
+}
+
+// Owner interface
+func (g *Graph) NewControlChannel() chan node.Msg {
+	return g.control.NewChannel()
+}
+
+// Owner interface
+func (g *Graph) RequestAccess(resources []string) {
+
 }
 
 func (g *Graph) add(n node.Node) {
@@ -99,7 +111,7 @@ func (g *Graph) addInput(n node.Node, s node.Source) {
 func (g *Graph) Start() {
 	g.Stop()
 
-	a := node.StartArgs{&g.nodeWaiter}
+	a := node.StartArgs{g, &g.nodeWaiter}
 
 	// Create all the channel connections
 	for i := 0; i < len(g._nodes); i++ {
@@ -119,8 +131,10 @@ func (g *Graph) Start() {
 }
 
 func (g *Graph) Stop() {
+	g.control.CloseChannels()
 	g.output.CloseChannels()
 	g.nodeWaiter.Wait()
+	fmt.Println("graph stopped")
 }
 
 // Describe the structure of the graph.

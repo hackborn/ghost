@@ -1,6 +1,7 @@
 package node
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -48,61 +49,43 @@ func (e *Exec) StartChannels(a StartArgs, inputs []Source) {
 }
 
 func (e *Exec) StartRunning(a StartArgs) error {
-	if len(e.input.Out) != 1 {
+	fmt.Println("Start exec", e, "ins", len(e.input.Out), "outs", len(e.Out))
+	merge, err := e.startMerge(a)
+	if err != nil {
+		fmt.Println("exec.StartRunning: ", err)
+		return err
+	}
+	if merge == nil {
 		return nil
 	}
-	fmt.Println("Start exec", e, "ins", len(e.input.Out), "outs", len(e.Out))
+
+	control := a.Owner.NewControlChannel()
+	if control == nil {
+		return errors.New("Can't make control channel")
+	}
 
 	// The cmd runs in a separate gofunc. This channel communicates back to the main func,
 	// returning the result of the run (specifically, exec.Cmd.Wait()).
 	status := make(chan error)
-	merge := make(chan Msg)
-
-	// Route incoming messages through a timer, which prevents multiple calls
-	timer := time.NewTimer(time.Hour)
-	if !timer.Stop() {
-		<-timer.C
-	}
 
 	a.NodeWaiter.Add(1)
-	go func(timer *time.Timer, merge chan Msg) {
-		defer a.NodeWaiter.Done()
-		defer close(merge)
-		defer e.CloseChannels()
-
-		var last Msg
-
-		// An extremely simply handling of the timer right now --
-		// it will get retriggered as long as I receive new events,
-		// only firing once that stops. Need to improve this so
-		// it will always fire after a small delay, even if it's
-		// still receiving events.
-		for {
-			select {
-			case msg, more := <-e.input.Out[0]:
-				if more {
-					last = msg
-					timer.Reset(100 * time.Millisecond)
-				} else {
-					return
-				}
-			case <-timer.C:
-				merge<-last
-			}
-		}
-	}(timer, merge)
-
-	a.NodeWaiter.Add(1)
-	go func(merge chan Msg) {
+	go func(control chan Msg, merge chan Msg) {
 		var cmd *exec.Cmd = nil
 		fmt.Println("start exec func")
 		defer a.NodeWaiter.Done()
 		defer fmt.Println("end exec func")
 		defer execCleanup(cmd)
+		defer e.CloseChannels()
 		needs_run := false
 
 		for {
 			select {
+			case _, more := <-control:
+				if more {
+					// XXX Handle control message
+				} else {
+					return
+				}
 			case msg, more := <-merge:
 				if more {
 					fmt.Println("exec msg", msg)
@@ -132,15 +115,73 @@ func (e *Exec) StartRunning(a StartArgs) error {
 				}
 			}
 		}
-	}(merge)
+	}(control, merge)
 
 	return nil
+}
+
+func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
+	// Must have 1 someone upstream, or else this is useless.
+	// However, this isn't currently an error, it's just an orphan
+	// node that won't run.
+	if len(e.input.Out) != 1 {
+		return nil, nil
+	}
+
+	control := a.Owner.NewControlChannel()
+	if control == nil {
+		return nil, errors.New("Can't make control channel")
+	}
+
+	// The cmd runs in a separate gofunc. This channel communicates back to the main func,
+	// returning the result of the run (specifically, exec.Cmd.Wait()).
+	merge := make(chan Msg)
+
+	// Route incoming messages through a timer, which prevents multiple calls
+	timer := time.NewTimer(time.Hour)
+	if !timer.Stop() {
+		<-timer.C
+	}
+
+	a.NodeWaiter.Add(1)
+	go func(timer *time.Timer, merge chan Msg, control chan Msg) {
+		defer a.NodeWaiter.Done()
+		defer close(merge)
+
+		var last Msg
+
+		// An extremely simply handling of the timer right now --
+		// it will get retriggered as long as I receive new events,
+		// only firing once that stops. Need to improve this so
+		// it will always fire after a small delay, even if it's
+		// still receiving events.
+		for {
+			select {
+			case msg, more := <-control:
+				if more {
+					merge <- msg
+				} else {
+					return
+				}
+			case msg, more := <-e.input.Out[0]:
+				if more {
+					last = msg
+					timer.Reset(100 * time.Millisecond)
+				} else {
+					return
+				}
+			case <-timer.C:
+				merge <- last
+			}
+		}
+	}(timer, merge, control)
+	return merge, nil
 }
 
 func execCleanup(cmd *exec.Cmd) {
 	fmt.Println("cleanup 1")
 	if cmd != nil && cmd.Process != nil {
-	fmt.Println("cleanup 2")
+		fmt.Println("cleanup 2")
 		cmd.Process.Kill()
 	}
 }
@@ -152,7 +193,7 @@ func (e *Exec) startCmd(c chan error) *exec.Cmd {
 	}
 	go func() {
 		fmt.Println("*****run exec", e.Cmd)
-		c<-cmd.Run()
+		c <- cmd.Run()
 	}()
 	return cmd
 }
@@ -170,42 +211,6 @@ func (e *Exec) createCmd() *exec.Cmd {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd
-}
-
-func (e *Exec) Start(a StartArgs, inputs []Source) {
-	fmt.Println("exec cmd", e.Cmd, "args", e.Args, "dir", e.Dir)
-	if len(inputs) != 1 {
-		fmt.Println("node.Exec.Start() must have 1 input (for now)", len(inputs))
-		return
-	}
-
-	/*
-		cmd := exec.Command("C:/work/dev/go/src/github.com/hackborn/broom_server/server/server.exe")
-		cmd.Dir = "C:/work/dev/go/src/github.com/hackborn/broom_server/server"
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		//	cmd.Run()
-
-		// How to stop:
-		// http://stackoverflow.com/questions/11886531/terminating-a-process-started-with-os-exec-in-golang
-		done := make(chan error, 1)
-		go func() {
-			done <- cmd.Run()
-		}()
-		select {
-		case <-time.After(10 * time.Second):
-			if err := cmd.Process.Kill(); err != nil {
-				log.Fatal("failed to kill: ", err)
-			}
-			log.Println("process killed as timeout reached")
-		case err := <-done:
-			if err != nil {
-				log.Printf("process done with error = %v", err)
-			} else {
-				log.Print("process done gracefully without error")
-			}
-		}
-	*/
 }
 
 func (e *Exec) RequestAccess(data *RequestArgs) {

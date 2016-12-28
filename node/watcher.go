@@ -55,6 +55,11 @@ func (w *Watcher) StartRunning(a StartArgs) error {
 		return errors.New("Watcher won't start")
 	}
 
+	control := a.Owner.NewControlChannel()
+	if control == nil {
+		return errors.New("Can't make control channel")
+	}
+
 	a.NodeWaiter.Add(1)
 	go func() {
 		fmt.Println("start watch func")
@@ -65,14 +70,18 @@ func (w *Watcher) StartRunning(a StartArgs) error {
 
 		for {
 			select {
+			case _, more := <-control:
+				if !more {
+					return
+				}
 			case _, imore := <-w.input.Out[0]:
 				if !imore {
 					return
 				}
 			case event := <-watcher.Events:
-				fmt.Println("event:", event)
+				//				fmt.Println("event:", event)
 				if event.Op&fsnotify.Write == fsnotify.Write {
-					fmt.Println("modified file:", event.Name)
+					//					fmt.Println("modified file:", event.Name)
 					w.SendMsg(Msg{})
 				}
 			case err := <-watcher.Errors:

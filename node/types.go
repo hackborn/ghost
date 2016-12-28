@@ -13,6 +13,7 @@ type RequestArgs struct {
 
 // Data sent out to Node.Start.
 type StartArgs struct {
+	Owner Owner
 	// A graph lock so we can wait for all nodes to finish running.
 	NodeWaiter *sync.WaitGroup
 }
@@ -26,6 +27,17 @@ type Msg struct {
 type Source interface {
 	// Create and answer a new channel (adding it to the source).
 	NewChannel() chan Msg
+}
+
+// A node owner. Provide an API for various functions and a channel
+// to receive control events.
+type Owner interface {
+	// Create and answer a new channel (adding it to the source).
+	NewControlChannel() chan Msg
+
+	// Request access to a given resource. The control channel
+	// will receive notification when access has been given.
+	RequestAccess(resources []string)
 }
 
 // Bundle behaviour for managing Node input/output channels.
