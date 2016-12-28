@@ -18,7 +18,13 @@
 		<watcher>
 			<folder>${watch}</folder>
 		</watcher>
-		<exec cmd="go" args="build" dir="${build_folder}" interrupt="false" rerun="false" />
-		<exec cmd="${run}" dir="${build_folder}" />
+		<exec cmd="go" args="build" dir="${build_folder}" interrupt="false" rerun="false">
+			<!-- Resources shared with other nodes, which need to be released before I can run. -->
+			<shared>${shared}</shared>
+		</exec>
+		<exec cmd="${run}" dir="${build_folder}" interrupt="true" rerun="true">
+			<!-- Resources shared with other nodes. -->
+			<shared>${shared}</shared>
+		</exec>
 	</nodes>
 </graph>

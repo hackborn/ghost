@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 )
 
 // Run a command.
@@ -55,28 +56,54 @@ func (e *Exec) StartRunning(a StartArgs) error {
 	// The cmd runs in a separate gofunc. This channel communicates back to the main func,
 	// returning the result of the run (specifically, exec.Cmd.Wait()).
 	status := make(chan error)
+	merge := make(chan Msg)
 
-	cmd := exec.Command(e.Cmd)
-	cmd.Dir = e.Dir
-	if len(e.Args) > 0 {
-		cmd.Args = append(cmd.Args, e.Args)
+	// Route incoming messages through a timer, which prevents multiple calls
+	timer := time.NewTimer(time.Hour)
+	if !timer.Stop() {
+		<-timer.C
 	}
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 
 	a.NodeWaiter.Add(1)
-	go func() {
+	go func(timer *time.Timer, merge chan Msg) {
+		defer a.NodeWaiter.Done()
+		defer close(merge)
+		defer e.CloseChannels()
+
+		var last Msg
+
+		// An extremely simply handling of the timer right now --
+		// it will get retriggered as long as I receive new events,
+		// only firing once that stops. Need to improve this so
+		// it will always fire after a small delay, even if it's
+		// still receiving events.
+		for {
+			select {
+			case msg, more := <-e.input.Out[0]:
+				if more {
+					last = msg
+					timer.Reset(100 * time.Millisecond)
+				} else {
+					return
+				}
+			case <-timer.C:
+				merge<-last
+			}
+		}
+	}(timer, merge)
+
+	a.NodeWaiter.Add(1)
+	go func(merge chan Msg) {
 		var cmd *exec.Cmd = nil
 		fmt.Println("start exec func")
 		defer a.NodeWaiter.Done()
 		defer fmt.Println("end exec func")
 		defer execCleanup(cmd)
-		defer e.CloseChannels()
 		needs_run := false
 
 		for {
 			select {
-			case msg, more := <-e.input.Out[0]:
+			case msg, more := <-merge:
 				if more {
 					fmt.Println("exec msg", msg)
 					if cmd == nil {
@@ -105,7 +132,7 @@ func (e *Exec) StartRunning(a StartArgs) error {
 				}
 			}
 		}
-	}()
+	}(merge)
 
 	return nil
 }
