@@ -52,6 +52,10 @@ func (e *Exec) StartRunning(a StartArgs) error {
 	}
 	fmt.Println("Start exec", e, "ins", len(e.input.Out), "outs", len(e.Out))
 
+	// The cmd runs in a separate gofunc. This channel communicates back to the main func,
+	// returning the result of the run (specifically, exec.Cmd.Wait()).
+	status := make(chan error)
+
 	cmd := exec.Command(e.Cmd)
 	cmd.Dir = e.Dir
 	if len(e.Args) > 0 {
@@ -62,21 +66,42 @@ func (e *Exec) StartRunning(a StartArgs) error {
 
 	a.NodeWaiter.Add(1)
 	go func() {
+		var cmd *exec.Cmd = nil
 		fmt.Println("start exec func")
 		defer a.NodeWaiter.Done()
 		defer fmt.Println("end exec func")
 		defer execCleanup(cmd)
 		defer e.CloseChannels()
+		needs_run := false
 
 		for {
 			select {
-			case msg, imore := <-e.input.Out[0]:
-				if imore {
+			case msg, more := <-e.input.Out[0]:
+				if more {
 					fmt.Println("exec msg", msg)
-					err := cmd.Run()
-					fmt.Println("run err", err)
+					if cmd == nil {
+						cmd = e.startCmd(status)
+					} else {
+						needs_run = true
+					}
 				} else {
 					return
+				}
+			case runerr, more := <-status:
+				if more {
+					fmt.Println("run err", runerr)
+					execCleanup(cmd)
+					cmd = nil
+					if needs_run {
+						needs_run = false
+						cmd = e.startCmd(status)
+					}
+				} else {
+					// The channel closed for some unknown reason,
+					// that's an error but shouldn't shut down the graph.
+					execCleanup(cmd)
+					cmd = nil
+					fmt.Println("exec error: channel closed, cause unknown")
 				}
 			}
 		}
@@ -86,9 +111,38 @@ func (e *Exec) StartRunning(a StartArgs) error {
 }
 
 func execCleanup(cmd *exec.Cmd) {
+	fmt.Println("cleanup 1")
 	if cmd != nil && cmd.Process != nil {
+	fmt.Println("cleanup 2")
 		cmd.Process.Kill()
 	}
+}
+
+func (e *Exec) startCmd(c chan error) *exec.Cmd {
+	cmd := e.createCmd()
+	if cmd == nil {
+		return nil
+	}
+	go func() {
+		fmt.Println("*****run exec", e.Cmd)
+		c<-cmd.Run()
+	}()
+	return cmd
+}
+
+func (e *Exec) createCmd() *exec.Cmd {
+	cmd := exec.Command(e.Cmd)
+	if cmd == nil {
+		fmt.Println("exec error: Couldn't create cmd")
+		return nil
+	}
+	cmd.Dir = e.Dir
+	if len(e.Args) > 0 {
+		cmd.Args = append(cmd.Args, e.Args)
+	}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd
 }
 
 func (e *Exec) Start(a StartArgs, inputs []Source) {

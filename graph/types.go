@@ -13,6 +13,9 @@ type Arg struct {
 	XMLName xml.Name
 	Value   string `xml:",chardata"`
 	Usage   string `xml:"usage,attr"`
+	// This has been added to Go1.8. When that's released, I can
+	// use this to simplify (i.e. eliminate) a lot of the parsing.
+//	Attrs   []xml.Attr `xml:",any,attr"`
 }
 
 type Args struct {
