@@ -99,6 +99,16 @@ type Node interface {
 	RequestAccess(data *RequestArgs)
 }
 
+func CmdFromMsg(m Msg) *Cmd {
+	t := m.MustGetString("type")
+	if t != "cmd" {
+		return nil
+	}
+	var c Cmd
+	c.Method = m.MustGetString("method")
+	return &c
+}
+
 func (c *Cmd) AsMsg() Msg {
 	var m Msg
 	m.Values = make(map[string]interface{})
@@ -114,6 +124,26 @@ func (c *Cmds) FillIds(get GetId) {
 		cmd := &c.CmdList[i]
 		cmd.TargetId = get.GetId(cmd.Target)
 	}
+}
+
+func (m *Msg) MustGetString(key string) string {
+	s, _ := m.GetString(key)
+	return s
+}
+
+func (m *Msg) GetString(key string) (string, bool) {
+	if m.Values == nil {
+		return "", false
+	}
+	si, ok := m.Values[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := si.(string)
+	if !ok {
+		return "", false
+	}
+	return s, true
 }
 
 func (cs *Channels) Add(c chan Msg) {

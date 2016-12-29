@@ -105,6 +105,11 @@ func (e *Exec) StartRunning(a StartArgs) error {
 				if more {
 					// XXX Handle control message
 					fmt.Println("exec control", msg)
+					cmd := CmdFromMsg(msg)
+					if cmd != nil {
+						
+					}
+					fmt.Println("exec control cmd", cmd)
 				} else {
 					return
 				}
@@ -215,7 +220,7 @@ func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
 		defer close(cmds)
 
 		//		var last Msg
-		replies := make(map[int]bool)
+		replies := make(map[Id]bool)
 
 		for {
 			select {
@@ -228,11 +233,11 @@ func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
 				if more {
 					// Send each command to the graph. Clear out replies from
 					// previous runs.
-					replies = make(map[int]bool)
+					replies = make(map[Id]bool)
 					for _, v := range e.CmdList {
-						owner.SendCmd(v, e.Id)
-						if v.Reply {
-							replies[12] = false
+						err := owner.SendCmd(v, e.Id)
+						if err == nil && v.Reply {
+							replies[v.TargetId] = false
 						}
 					}
 					fmt.Println("reply size", len(replies))
