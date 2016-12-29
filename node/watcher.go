@@ -12,10 +12,20 @@ type Folder struct {
 
 // Watch a folder path, emitting messages when it changes.
 type Watcher struct {
+	Id       Id
 	Name     string   `xml:"name,attr"`
 	Folders  []Folder `xml:"folder"`
 	input    Channels
 	Channels // Output
+	Cmds
+}
+
+func (w *Watcher) GetId() Id {
+	return w.Id
+}
+
+func (w *Watcher) GetName() string {
+	return w.Name
 }
 
 func (w *Watcher) ApplyArgs(cs ChangeString) {
@@ -55,7 +65,7 @@ func (w *Watcher) StartRunning(a StartArgs) error {
 		return errors.New("Watcher won't start")
 	}
 
-	control := a.Owner.NewControlChannel()
+	control := a.Owner.NewControlChannel(0)
 	if control == nil {
 		return errors.New("Can't make control channel")
 	}

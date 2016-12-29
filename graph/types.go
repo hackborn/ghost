@@ -2,6 +2,7 @@ package graph
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"github.com/hackborn/ghost/node"
 	"strings"
@@ -58,6 +59,8 @@ type Graph struct {
 	// The collection of channels to my root nodes
 	output     node.Channels
 	control    node.Channels
+	// Registered control channels.
+	regctrl		map[node.Id]chan node.Msg
 	nodeWaiter sync.WaitGroup
 }
 
@@ -83,13 +86,33 @@ func (g *Graph) NewChannel() chan node.Msg {
 }
 
 // Owner interface
-func (g *Graph) NewControlChannel() chan node.Msg {
-	return g.control.NewChannel()
+func (g *Graph) NewControlChannel(id node.Id) chan node.Msg {
+	c := g.control.NewChannel()
+	if id > 0 && c != nil {
+		if g.regctrl == nil {
+			g.regctrl = make(map[node.Id]chan node.Msg)
+		}
+		g.regctrl[id] = c
+	}
+	return c
 }
 
 // Owner interface
-func (g *Graph) RequestAccess(resources []string) {
+func (g *Graph) SendCmd(cmd node.Cmd, source node.Id) error {
+	fmt.Println("send", cmd)
+	for i := 0; i < len(g._nodes); i++ {
+		dst := g._nodes[i].node
+		if dst != nil && dst.GetId() == cmd.TargetId {
+			fmt.Println("found")
+			c, _ := g.regctrl[cmd.TargetId]
+			if c != nil {
+				c<-cmd.AsMsg()
+			}
+			return nil
+		}
 
+	}
+	return errors.New("No target")
 }
 
 func (g *Graph) add(n node.Node) {

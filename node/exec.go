@@ -10,6 +10,7 @@ import (
 
 // Run a command.
 type Exec struct {
+	Id        Id
 	Name      string `xml:"name,attr"`
 	Cmd       string `xml:"cmd,attr"`
 	Args      string `xml:"args,attr"`
@@ -18,10 +19,19 @@ type Exec struct {
 	Rerun     bool   `xml:"rerun,attr"`
 	input     Channels
 	Channels  // Output
+	Cmds
 }
 
 func (n *Exec) IsValid() bool {
 	return len(n.Cmd) > 0
+}
+
+func (e *Exec) GetId() Id {
+	return e.Id
+}
+
+func (e *Exec) GetName() string {
+	return e.Name
 }
 
 func (e *Exec) ApplyArgs(cs ChangeString) {
@@ -31,10 +41,13 @@ func (e *Exec) ApplyArgs(cs ChangeString) {
 }
 
 func (e *Exec) StartChannels(a StartArgs, inputs []Source) {
+	e.input.CloseChannels()
+
 	// No inputs means this node is never hit, so ignore.
 	if len(inputs) <= 0 {
 		return
 	}
+
 	// If we want multiple inputs, we'll need to expand the running
 	// code to handle merging.
 	if len(inputs) != 1 {
@@ -42,7 +55,6 @@ func (e *Exec) StartChannels(a StartArgs, inputs []Source) {
 		return
 	}
 
-	e.input.CloseChannels()
 	for _, i := range inputs {
 		e.input.Add(i.NewChannel())
 	}
@@ -59,7 +71,16 @@ func (e *Exec) StartRunning(a StartArgs) error {
 		return nil
 	}
 
-	control := a.Owner.NewControlChannel()
+	// If we have any commands, insert a handling stage between merge and my exec routine.
+	if len(e.CmdList) > 0 {
+		merge, err = e.startCmds(a, merge)
+		if err != nil {
+			fmt.Println("exec.StartRunning: ", err)
+			return err
+		}
+	}
+
+	control := a.Owner.NewControlChannel(e.Id)
 	if control == nil {
 		return errors.New("Can't make control channel")
 	}
@@ -80,9 +101,10 @@ func (e *Exec) StartRunning(a StartArgs) error {
 
 		for {
 			select {
-			case _, more := <-control:
+			case msg, more := <-control:
 				if more {
 					// XXX Handle control message
+					fmt.Println("exec control", msg)
 				} else {
 					return
 				}
@@ -128,7 +150,7 @@ func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
 		return nil, nil
 	}
 
-	control := a.Owner.NewControlChannel()
+	control := a.Owner.NewControlChannel(0)
 	if control == nil {
 		return nil, errors.New("Can't make control channel")
 	}
@@ -157,10 +179,9 @@ func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
 		// still receiving events.
 		for {
 			select {
-			case msg, more := <-control:
-				if more {
-					merge <- msg
-				} else {
+			case _, more := <-control:
+				// I only use control to exit
+				if !more {
 					return
 				}
 			case msg, more := <-e.input.Out[0]:
@@ -176,6 +197,55 @@ func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
 		}
 	}(timer, merge, control)
 	return merge, nil
+}
+
+func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
+	control := a.Owner.NewControlChannel(0)
+	if control == nil {
+		return nil, errors.New("Can't make control channel for cmds")
+	}
+
+	// The cmd runs in a separate gofunc. This channel communicates back to the main func,
+	// returning the result of the run (specifically, exec.Cmd.Wait()).
+	cmds := make(chan Msg)
+
+	a.NodeWaiter.Add(1)
+	go func(owner Owner, merge chan Msg, control chan Msg, cmds chan Msg) {
+		defer a.NodeWaiter.Done()
+		defer close(cmds)
+
+		//		var last Msg
+		replies := make(map[int]bool)
+
+		for {
+			select {
+			case _, more := <-control:
+				// I only use control to exit
+				if !more {
+					return
+				}
+			case msg, more := <-merge:
+				if more {
+					// Send each command to the graph. Clear out replies from
+					// previous runs.
+					replies = make(map[int]bool)
+					for _, v := range e.CmdList {
+						owner.SendCmd(v, e.Id)
+						if v.Reply {
+							replies[12] = false
+						}
+					}
+					fmt.Println("reply size", len(replies))
+					//					last = msg
+					fmt.Println("FORWARD")
+					cmds <- msg
+				} else {
+					return
+				}
+			}
+		}
+	}(a.Owner, merge, control, cmds)
+	return cmds, nil
 }
 
 func execCleanup(cmd *exec.Cmd) {

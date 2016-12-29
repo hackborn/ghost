@@ -3,6 +3,7 @@ package graph
 import (
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -49,6 +50,15 @@ func (b *builder) build(la LoadArgs) {
 			prev = n
 		}
 	}
+}
+
+func (b *builder) GetId(name string) node.Id {
+	for _, n := range b.order {
+		if n.GetName() == name {
+			return n.GetId()
+		}
+	}
+	return 0
 }
 
 // Find the graph with the given name and load it.
@@ -98,6 +108,15 @@ func LoadFile(filename string, la LoadArgs) (*Graph, error) {
 			}
 		}
 	}
+
+	// Fill in the IDs for all cmds. Ideally this would be handled
+	// completely inside the load -- with go 1.8 I think I can move to
+	// an abstract xml loading representation, and then just walk the
+	// tree. For now, I go through some functions on my domain objects.
+	for _, n := range builder.order {
+		n.FillIds(&builder)
+	}
+
 	builder.build(la)
 	//    fmt.Println("DONZO!", builder.graph)
 	return builder.graph, nil
@@ -124,6 +143,7 @@ func formatName(n string) string {
 }
 
 func decodeNodes(token xml.Token, decoder *xml.Decoder, builder *builder) {
+	var id node.Id = 1
 	for {
 		token, err := decoder.Token()
 		if token == nil {
@@ -141,13 +161,16 @@ func decodeNodes(token xml.Token, decoder *xml.Decoder, builder *builder) {
 		case xml.StartElement:
 			if ele.Name.Local == "watcher" {
 				var v node.Watcher
+				v.Id = id
 				v.Name = ele.Name.Local
 				decoder.DecodeElement(&v, &ele)
 				n = &v
 			} else if ele.Name.Local == "exec" {
 				var v node.Exec
+				v.Id = id
 				v.Name = ele.Name.Local
 				decoder.DecodeElement(&v, &ele)
+				//				fmt.Println("exec decode", v)
 				if (&v).IsValid() {
 					n = &v
 				}
@@ -158,8 +181,16 @@ func decodeNodes(token xml.Token, decoder *xml.Decoder, builder *builder) {
 			}
 		}
 		if n != nil {
+			id++
 			builder.graph.add(n)
 			builder.order = append(builder.order, n)
 		}
 	}
+}
+
+// UGH. This exists solely because I constantly have to enable and disable
+// the fmt import. SURELY there's some way for things to be slightly less
+// stringent outside of a release build.
+func empty() {
+	fmt.Println("empty")
 }

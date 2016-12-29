@@ -1,9 +1,28 @@
 package node
 
 import (
+	"encoding/xml"
 	"fmt"
 	"sync"
 )
+
+// > 0 is a valid ID
+// == 0 is unassigned
+// < 0 is undefined
+type Id int
+
+// Specific commands sent between nodes
+type Cmd struct {
+	XMLName  xml.Name
+	Method   string `xml:"method,attr"`
+	Target   string `xml:"target,attr"`
+	TargetId Id
+	Reply    bool `xml:"reply,attr"`
+}
+
+type Cmds struct {
+	CmdList []Cmd `xml:",any"`
+}
 
 // Data sent out to Node.RequestAccess.
 type RequestArgs struct {
@@ -20,6 +39,7 @@ type StartArgs struct {
 
 // A message passed between nodes.
 type Msg struct {
+	Values map[string]interface{}
 }
 
 // Provide access to the source feeding into a node.
@@ -29,15 +49,23 @@ type Source interface {
 	NewChannel() chan Msg
 }
 
+// Answer an Id for a given name,
+// XXX Should be deprecated with 1.8.
+type GetId interface {
+	// Create and answer a new channel (adding it to the source).
+	GetId(name string) Id
+}
+
 // A node owner. Provide an API for various functions and a channel
 // to receive control events.
 type Owner interface {
 	// Create and answer a new channel (adding it to the source).
-	NewControlChannel() chan Msg
+	// If the ID is > 0 then this will be registered as the control
+	// channel for the node.
+	NewControlChannel(id Id) chan Msg
 
-	// Request access to a given resource. The control channel
-	// will receive notification when access has been given.
-	RequestAccess(resources []string)
+	// Send a command from a source.
+	SendCmd(cmd Cmd, source Id) error
 }
 
 // Bundle behaviour for managing Node input/output channels.
@@ -52,14 +80,40 @@ type ChangeString interface {
 
 // A single node in the processing graph.
 type Node interface {
+	GetId() Id
+	GetName() string
+
 	ApplyArgs(cs ChangeString)
 	NewChannel() chan Msg
 	// Starting the graph goes through a two-step process on each
 	// node: First all channels are generated, then they are run.
 	StartChannels(a StartArgs, inputs []Source)
 	StartRunning(a StartArgs) error
+
+	// Set target IDs (for commands)
+	// XXX I think this will be deprecated when I rewrite XML load with 1.8.
+	FillIds(get GetId)
+
 	// Received when a node is
+	// XXX Should be deprecated
 	RequestAccess(data *RequestArgs)
+}
+
+func (c *Cmd) AsMsg() Msg {
+	var m Msg
+	m.Values = make(map[string]interface{})
+	m.Values["type"] = "cmd"
+	if c.Method != "" {
+		m.Values["method"] = c.Method
+	}
+	return m
+}
+
+func (c *Cmds) FillIds(get GetId) {
+	for i := 0; i < len(c.CmdList); i++ {
+		cmd := &c.CmdList[i]
+		cmd.TargetId = get.GetId(cmd.Target)
+	}
 }
 
 func (cs *Channels) Add(c chan Msg) {

@@ -11,7 +11,6 @@
 	Macro names can't conflict with any names in args. -->
 	<macros>
 		<build_folder>${watch}\${build}</build_folder>
-		<shared>${watch}\${build}\${run}</shared>
 	</macros>
 	
 	<nodes>
@@ -19,12 +18,8 @@
 			<folder>${watch}</folder>
 		</watcher>
 		<exec cmd="go" args="build" dir="${build_folder}" interrupt="false" rerun="false">
-			<!-- Resources shared with other nodes, which need to be released before I can run. -->
-			<shared>${shared}</shared>
+			<cmd method="stop" target="host" reply="true" />
 		</exec>
-		<exec cmd="${run}" dir="${build_folder}" interrupt="true" rerun="true">
-			<!-- Resources shared with other nodes. -->
-			<shared>${shared}</shared>
-		</exec>
+		<exec name="host" cmd="${run}" dir="${build_folder}" interrupt="true" rerun="true" />
 	</nodes>
 </graph>
