@@ -80,6 +80,11 @@ func (e *Exec) StartRunning(a StartArgs) error {
 		}
 	}
 
+	done := a.Owner.NewDoneChannel()
+	if done == nil {
+		return errors.New("Can't make done channel")
+	}
+
 	control := a.Owner.NewControlChannel(e.Id)
 	if control == nil {
 		return errors.New("Can't make control channel")
@@ -90,7 +95,7 @@ func (e *Exec) StartRunning(a StartArgs) error {
 	status := make(chan error)
 
 	a.NodeWaiter.Add(1)
-	go func(control chan Msg, merge chan Msg) {
+	go func(done chan int, control chan Msg, merge chan Msg) {
 		var cmd *exec.Cmd = nil
 		fmt.Println("start exec func")
 		defer a.NodeWaiter.Done()
@@ -101,17 +106,19 @@ func (e *Exec) StartRunning(a StartArgs) error {
 
 		for {
 			select {
+			case _, more := <-done:
+				if !more {
+					return
+				}
 			case msg, more := <-control:
 				if more {
 					// XXX Handle control message
 					fmt.Println("exec control", msg)
 					cmd := CmdFromMsg(msg)
 					if cmd != nil {
-						
+
 					}
 					fmt.Println("exec control cmd", cmd)
-				} else {
-					return
 				}
 			case msg, more := <-merge:
 				if more {
@@ -121,8 +128,6 @@ func (e *Exec) StartRunning(a StartArgs) error {
 					} else {
 						needs_run = true
 					}
-				} else {
-					return
 				}
 			case runerr, more := <-status:
 				if more {
@@ -142,7 +147,7 @@ func (e *Exec) StartRunning(a StartArgs) error {
 				}
 			}
 		}
-	}(control, merge)
+	}(done, control, merge)
 
 	return nil
 }
@@ -155,9 +160,9 @@ func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
 		return nil, nil
 	}
 
-	control := a.Owner.NewControlChannel(0)
-	if control == nil {
-		return nil, errors.New("Can't make control channel")
+	done := a.Owner.NewDoneChannel()
+	if done == nil {
+		return nil, errors.New("Can't make done channel for merge")
 	}
 
 	// The cmd runs in a separate gofunc. This channel communicates back to the main func,
@@ -171,7 +176,7 @@ func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
 	}
 
 	a.NodeWaiter.Add(1)
-	go func(timer *time.Timer, merge chan Msg, control chan Msg) {
+	go func(timer *time.Timer, merge chan Msg, done chan int) {
 		defer a.NodeWaiter.Done()
 		defer close(merge)
 
@@ -184,8 +189,7 @@ func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
 		// still receiving events.
 		for {
 			select {
-			case _, more := <-control:
-				// I only use control to exit
+			case _, more := <-done:
 				if !more {
 					return
 				}
@@ -200,14 +204,14 @@ func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
 				merge <- last
 			}
 		}
-	}(timer, merge, control)
+	}(timer, merge, done)
 	return merge, nil
 }
 
 func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
-	control := a.Owner.NewControlChannel(0)
-	if control == nil {
-		return nil, errors.New("Can't make control channel for cmds")
+	done := a.Owner.NewDoneChannel()
+	if done == nil {
+		return nil, errors.New("Can't make done channel for cmds")
 	}
 
 	// The cmd runs in a separate gofunc. This channel communicates back to the main func,
@@ -215,7 +219,7 @@ func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
 	cmds := make(chan Msg)
 
 	a.NodeWaiter.Add(1)
-	go func(owner Owner, merge chan Msg, control chan Msg, cmds chan Msg) {
+	go func(owner Owner, merge chan Msg, done chan int, cmds chan Msg) {
 		defer a.NodeWaiter.Done()
 		defer close(cmds)
 
@@ -224,8 +228,7 @@ func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
 
 		for {
 			select {
-			case _, more := <-control:
-				// I only use control to exit
+			case _, more := <-done:
 				if !more {
 					return
 				}
@@ -244,12 +247,10 @@ func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
 					//					last = msg
 					fmt.Println("FORWARD")
 					cmds <- msg
-				} else {
-					return
 				}
 			}
 		}
-	}(a.Owner, merge, control, cmds)
+	}(a.Owner, merge, done, cmds)
 	return cmds, nil
 }
 

@@ -65,13 +65,13 @@ func (w *Watcher) StartRunning(a StartArgs) error {
 		return errors.New("Watcher won't start")
 	}
 
-	control := a.Owner.NewControlChannel(0)
-	if control == nil {
-		return errors.New("Can't make control channel")
+	done := a.Owner.NewDoneChannel()
+	if done == nil {
+		return errors.New("Can't make done channel")
 	}
 
 	a.NodeWaiter.Add(1)
-	go func() {
+	go func(done chan int) {
 		fmt.Println("start watch func")
 		defer a.NodeWaiter.Done()
 		defer fmt.Println("end watcher func")
@@ -80,7 +80,7 @@ func (w *Watcher) StartRunning(a StartArgs) error {
 
 		for {
 			select {
-			case _, more := <-control:
+			case _, more := <-done:
 				if !more {
 					return
 				}
@@ -98,7 +98,7 @@ func (w *Watcher) StartRunning(a StartArgs) error {
 				fmt.Println("error:", err)
 			}
 		}
-	}()
+	}(done)
 
 	err = watcher.Add("C:/work/dev/go/src/github.com/hackborn/ghost")
 	if err != nil {

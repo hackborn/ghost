@@ -2,7 +2,6 @@ package graph
 
 import (
 	"encoding/xml"
-	"errors"
 	"fmt"
 	"github.com/hackborn/ghost/node"
 	"strings"
@@ -56,12 +55,20 @@ type Graph struct {
 	Macros Macros
 	// All nodes that were created for the graph.
 	_nodes []graphnode
+	// Done channels do nothing but control whether the graph is
+	// running. This lets us cleanly separate channels that are actively
+	// being used, and not tear them down until all nodes have stopped.
+	done		[]chan int
+	// Wait for all done channels to end when stopping the graph.
+	nodeWaiter sync.WaitGroup
 	// The collection of channels to my root nodes
 	output     node.Channels
-	control    node.Channels
+	// Control handling, to communicate between graph and nodes.
+	control		control
+
+//	control    node.Channels
 	// Registered control channels.
-	regctrl		map[node.Id]chan node.Msg
-	nodeWaiter sync.WaitGroup
+//	regctrl		map[node.Id]chan node.Msg
 }
 
 func (m *Macros) Expand(cs node.ChangeString) {
@@ -86,33 +93,20 @@ func (g *Graph) NewChannel() chan node.Msg {
 }
 
 // Owner interface
-func (g *Graph) NewControlChannel(id node.Id) chan node.Msg {
-	c := g.control.NewChannel()
-	if id > 0 && c != nil {
-		if g.regctrl == nil {
-			g.regctrl = make(map[node.Id]chan node.Msg)
-		}
-		g.regctrl[id] = c
-	}
+func (g *Graph) NewDoneChannel() chan int {
+	c := make(chan int)
+	g.done = append(g.done, c)
 	return c
 }
 
 // Owner interface
-func (g *Graph) SendCmd(cmd node.Cmd, source node.Id) error {
-	fmt.Println("send", cmd)
-	for i := 0; i < len(g._nodes); i++ {
-		dst := g._nodes[i].node
-		if dst != nil && dst.GetId() == cmd.TargetId {
-			fmt.Println("found")
-			c, _ := g.regctrl[cmd.TargetId]
-			if c != nil {
-				c<-cmd.AsMsg()
-			}
-			return nil
-		}
+func (g *Graph) NewControlChannel(id node.Id) chan node.Msg {
+	return g.control.newChannel(id)
+}
 
-	}
-	return errors.New("No target")
+// Owner interface
+func (g *Graph) SendCmd(cmd node.Cmd, source node.Id) error {
+	return g.control.sendCmd(cmd, source)
 }
 
 func (g *Graph) add(n node.Node) {
@@ -154,9 +148,16 @@ func (g *Graph) Start() {
 }
 
 func (g *Graph) Stop() {
-	g.control.CloseChannels()
-	g.output.CloseChannels()
+	// Stop all nodes...
+	for _, c := range g.done {
+		close(c)
+	}
+	g.done = g.done[:0]
+	// ...wait for them to stop...
 	g.nodeWaiter.Wait()
+	// ...tear down the channels
+	g.control.close()
+	g.output.CloseChannels()
 	fmt.Println("graph stopped")
 }
 
