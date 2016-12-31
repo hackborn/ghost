@@ -113,7 +113,14 @@ func (e *Exec) StartRunning(a StartArgs) error {
 		defer fmt.Println("end exec func")
 		defer killExec(process)
 		defer e.CloseChannels()
+
 		needs_run := false
+		in_stop := false
+		var stop_msg Msg
+
+		if e.Autorun {
+			process = e.runProcess(status)
+		}
 
 		for {
 			select {
@@ -133,6 +140,10 @@ func (e *Exec) StartRunning(a StartArgs) error {
 								rmsg := reply.AsMsg()
 								rmsg.SetInt(blockIdKey, msg.MustGetInt(blockIdKey))
 								owner.SendMsg(rmsg, msg.SenderId)
+							} else {
+								in_stop = true
+								stop_msg = msg
+								killExec(process)
 							}
 						}
 					}
@@ -141,7 +152,7 @@ func (e *Exec) StartRunning(a StartArgs) error {
 				if more {
 					fmt.Println("exec msg", msg)
 					if process == nil {
-						process = e.runCmd(status)
+						process = e.runProcess(status)
 					} else {
 						needs_run = true
 					}
@@ -150,9 +161,18 @@ func (e *Exec) StartRunning(a StartArgs) error {
 				if more {
 					fmt.Println("run err", err)
 					process = nil
-					if needs_run {
+					if in_stop {
+						in_stop = false
+						reply := Cmd{Method: cmdStopReply, TargetId: stop_msg.SenderId}
+						rmsg := reply.AsMsg()
+						rmsg.SetInt(blockIdKey, stop_msg.MustGetInt(blockIdKey))
+						owner.SendMsg(rmsg, stop_msg.SenderId)
+					} else if needs_run {
 						needs_run = false
-						process = e.runCmd(status)
+						process = e.runProcess(status)
+					} else if err == nil {
+						// Process completed successfully
+						e.SendMsg(Msg{})
 					}
 				} else {
 					// The channel closed for some unknown reason,
@@ -302,20 +322,20 @@ func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
 	return cmds, nil
 }
 
-func (e *Exec) runCmd(c chan error) *exec.Cmd {
-	cmd := e.createCmd()
-	if cmd == nil {
+func (e *Exec) runProcess(c chan error) *exec.Cmd {
+	proc := e.newCmd()
+	if proc == nil {
 		return nil
 	}
-	go func() {
-		fmt.Println("*****run exec", e.Cmd)
-		c <- cmd.Run()
+	go func(proc *exec.Cmd) {
+		fmt.Println("*****run exec:", e.Cmd, "path", proc.Path, "dir", proc.Dir)
+		c <- proc.Run()
 		fmt.Println("*****exec finished")
-	}()
-	return cmd
+	}(proc)
+	return proc
 }
 
-func (e *Exec) createCmd() *exec.Cmd {
+func (e *Exec) newCmd() *exec.Cmd {
 	cmd := exec.Command(e.Cmd)
 	if cmd == nil {
 		fmt.Println("exec error: Couldn't create cmd")

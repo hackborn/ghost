@@ -20,6 +20,6 @@
 		<exec cmd="go" args="build" dir="${build_folder}" interrupt="false" rerun="false">
 			<cmd method="stop" target="host" reply="true" />
 		</exec>
-		<exec name="host" cmd="${run}" dir="${build_folder}" interrupt="true" rerun="true" />
+		<exec name="host" cmd="${build_folder}\${run}" dir="${build_folder}" interrupt="true" autorun="true" rerun="true" />
 	</nodes>
 </graph>
