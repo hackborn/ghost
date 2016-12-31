@@ -159,16 +159,21 @@ func decodeNodes(token xml.Token, decoder *xml.Decoder, builder *builder) {
 		var n node.Node
 		switch ele := token.(type) {
 		case xml.StartElement:
-			if ele.Name.Local == "watcher" {
+			if ele.Name.Local == "watch" {
 				var v node.Watch
 				v.Id = id
 				v.Name = ele.Name.Local
 				decoder.DecodeElement(&v, &ele)
 				n = &v
-			} else if ele.Name.Local == "exec" {
+			} else if ele.Name.Local == "exec" || ele.Name.Local == "host" {
 				var v node.Exec
 				v.Id = id
 				v.Name = ele.Name.Local
+				if ele.Name.Local == "host" {
+					v.Interrupt = true
+					v.Autorun = true
+					v.Rerun = true
+				}
 				decoder.DecodeElement(&v, &ele)
 				//				fmt.Println("exec decode", v)
 				if (&v).IsValid() {

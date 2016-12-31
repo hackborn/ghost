@@ -57,12 +57,12 @@ func (w *Watch) StartRunning(a StartArgs) error {
 	if len(w.input.Out) != 1 {
 		return nil
 	}
-	fmt.Println("Start watcher", w, "ins", len(w.input.Out), "outs", len(w.Out))
+	fmt.Println("Start watch", w, "ins", len(w.input.Out), "outs", len(w.Out))
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		fmt.Println("watch err", err)
-		return errors.New("Watcher won't start")
+		return errors.New("Watch won't start")
 	}
 
 	done := a.Owner.DoneChannel()

@@ -4,7 +4,7 @@
 	<args>
 		<watch usage="Directory to watch">C:\work\dev\go\src\github.com\hackborn\broom_server</watch>
 		<build usage="Directory under the watch path that contains the file to build">server</build>
-		<run>server.exe</run>
+		<run usage="Name of executable to run. Must be in watch\build folder">server.exe</run>
 	</args>
 
 	<!-- Macros that can be used to make values in the nodes a little cleaner.
@@ -14,12 +14,12 @@
 	</macros>
 	
 	<nodes>
-		<watcher>
+		<watch>
 			<folder>${watch}</folder>
-		</watcher>
+		</watch>
 		<exec cmd="go" args="build" dir="${build_folder}" interrupt="false" rerun="false">
 			<cmd method="stop" target="host" reply="true" />
 		</exec>
-		<exec name="host" cmd="${build_folder}\${run}" dir="${build_folder}" interrupt="true" autorun="true" rerun="true" />
+		<host cmd="${build_folder}\${run}" dir="${build_folder}" />
 	</nodes>
 </graph>

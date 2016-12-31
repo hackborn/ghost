@@ -1,0 +1,51 @@
+<!-- Graph files determine the application behaviour by describing a pipeline used
+to perform node processing. There are three main sections:
+
+<args> (optional) are used to specify command line inputs to the graph. Generally this would be used to convert path information from the user into a local environment variable used in the nodes.
+
+<macros> (optional) can be used to create new environment variables based on the args. Main utility would be if you have a composite variable from several args appearing in multiple places, you can create a single macro for that.
+
+<nodes> specify the nodes in the pipeline. There are three types of nodes:
+	<watch>
+	<exec>
+	<host> (actually a macro for an exec node with preconfigured properties).
+	
+	<watch> contains one or more <folder> elements that specify the path to a folder to watch.
+	
+	<exec>...
+	
+	<host> is a macro for exec, with "interrupt", "autorun", and "rerun" all set to true (and the name is set to "host" and not "exec"). Note that any of those values can be overridden by including the attributes.
+-->
+
+<!-- Example graph to perform gulp functionality. Users need to supply all args -->
+
+<graph>
+	<!-- Command line args that can be passed into the app when this graph is selected.
+	Args names can't conflict with any names in macros. -->
+	<args>
+		<watch usage="Directory to watch" />
+		<build usage="Directory under the watch path that contains the file to build" />
+		<run usage="Name of executable to run. Must be in watch\build folder" />
+	</args>
+
+	<!-- Macros that can be used to make values in the nodes a little cleaner.
+	Macro names can't conflict with any names in args. -->
+	<macros>
+		<build_folder>${watch}\${build}</build_folder>
+	</macros>
+	
+	<nodes>
+		<watch>
+			<folder>${watch}</folder>
+		</watch>
+		
+		<exec cmd="go" args="build" dir="${build_folder}" interrupt="false" rerun="false">
+			<cmd method="stop" target="host" reply="true" />
+		</exec>
+		
+		<host cmd="${build_folder}\${run}" dir="${build_folder}" />
+		<!-- Or equivalent:
+		<exec type="host" name="host" cmd="${build_folder}\${run}" dir="${build_folder}" interrupt="true" autorun="true" rerun="true" />
+		-->
+	</nodes>
+</graph>
