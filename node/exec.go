@@ -91,7 +91,7 @@ func (e *Exec) StartRunning(a StartArgs) error {
 		}
 	}
 
-	done := a.Owner.NewDoneChannel()
+	done := a.Owner.DoneChannel()
 	if done == nil {
 		return errors.New("Can't make done channel")
 	}
@@ -196,7 +196,7 @@ func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
 		return nil, nil
 	}
 
-	done := a.Owner.NewDoneChannel()
+	done := a.Owner.DoneChannel()
 	if done == nil {
 		return nil, errors.New("Can't make done channel for merge")
 	}
@@ -245,7 +245,7 @@ func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
 }
 
 func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
-	done := a.Owner.NewDoneChannel()
+	done := a.Owner.DoneChannel()
 	if done == nil {
 		return nil, errors.New("Can't make done channel for cmds")
 	}

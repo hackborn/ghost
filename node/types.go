@@ -59,10 +59,12 @@ type GetId interface {
 // A node owner. Provide an API for various functions and a channel
 // to receive control events.
 type Owner interface {
-	// Answer a new channel that determines whether the graph is running.
-	// Note that done channels will always be paired with adding to the
+	// Answer the channel that determines whether the graph is running.
+	// There is nothing to read from this channel; when it's closed, the
+	// node should stop running. Note that this implies a new go func is
+	// being created, which should always be paired with adding to the
 	// StartArgs NodeWaiter.
-	NewDoneChannel() chan int
+	DoneChannel() chan int
 	// Answer a new channel used to provide communication between the
 	// graph and nodes (and indirectly from node to node). If the Id is
 	// > 0 then this will be registered as the control channel for the node.

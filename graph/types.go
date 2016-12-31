@@ -55,20 +55,15 @@ type Graph struct {
 	Macros Macros
 	// All nodes that were created for the graph.
 	_nodes []graphnode
-	// Done channels do nothing but control whether the graph is
-	// running. This lets us cleanly separate channels that are actively
-	// being used, and not tear them down until all nodes have stopped.
-	done []chan int
-	// Wait for all done channels to end when stopping the graph.
+	// Control whether the nodes should be running. When this is closed,
+	// all funcs should stop.
+	done chan int
+	// Wait for all done channel to end when stopping the graph.
 	nodeWaiter sync.WaitGroup
 	// The collection of channels to my root nodes
 	output node.Channels
 	// Control handling, to communicate between graph and nodes.
 	control control
-
-	//	control    node.Channels
-	// Registered control channels.
-	//	regctrl		map[node.Id]chan node.Msg
 }
 
 func NewGraph() *Graph {
@@ -99,10 +94,8 @@ func (g *Graph) NewChannel() chan node.Msg {
 }
 
 // Owner interface
-func (g *Graph) NewDoneChannel() chan int {
-	c := make(chan int)
-	g.done = append(g.done, c)
-	return c
+func (g *Graph) DoneChannel() chan int {
+	return g.done
 }
 
 // Owner interface
@@ -134,6 +127,7 @@ func (g *Graph) addInput(n node.Node, s node.Source) {
 func (g *Graph) Start() {
 	g.Stop()
 
+	g.done = make(chan int)
 	a := node.StartArgs{g, &g.nodeWaiter}
 
 	// Create all the channel connections
@@ -154,11 +148,14 @@ func (g *Graph) Start() {
 }
 
 func (g *Graph) Stop() {
-	// Stop all nodes...
-	for _, c := range g.done {
-		close(c)
+	// The graph is currently invalid, and can't be stopped
+	if g.done == nil {
+		return
 	}
-	g.done = g.done[:0]
+	
+	// Stop all nodes...
+	close(g.done)
+	g.done = nil
 	// ...wait for them to stop...
 	g.nodeWaiter.Wait()
 	// ...tear down the channels

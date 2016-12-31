@@ -65,7 +65,7 @@ func (w *Watch) StartRunning(a StartArgs) error {
 		return errors.New("Watcher won't start")
 	}
 
-	done := a.Owner.NewDoneChannel()
+	done := a.Owner.DoneChannel()
 	if done == nil {
 		return errors.New("Can't make done channel")
 	}
@@ -74,7 +74,7 @@ func (w *Watch) StartRunning(a StartArgs) error {
 	go func(done chan int) {
 		fmt.Println("start watch func")
 		defer a.NodeWaiter.Done()
-		defer fmt.Println("end watcher func")
+		defer fmt.Println("end watch func")
 		defer w.CloseChannels()
 		defer watcher.Close()
 
