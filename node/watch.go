@@ -11,7 +11,7 @@ type Folder struct {
 }
 
 // Watch a folder path, emitting messages when it changes.
-type Watcher struct {
+type Watch struct {
 	Id       Id
 	Name     string   `xml:"name,attr"`
 	Folders  []Folder `xml:"folder"`
@@ -20,22 +20,22 @@ type Watcher struct {
 	Cmds
 }
 
-func (w *Watcher) GetId() Id {
-	return w.Id
+func (n *Watch) GetId() Id {
+	return n.Id
 }
 
-func (w *Watcher) GetName() string {
-	return w.Name
+func (n *Watch) GetName() string {
+	return n.Name
 }
 
-func (w *Watcher) ApplyArgs(cs ChangeString) {
+func (w *Watch) ApplyArgs(cs ChangeString) {
 	for i := 0; i < len(w.Folders); i++ {
 		dst := &w.Folders[i]
 		dst.Path = cs.ChangeString(dst.Path)
 	}
 }
 
-func (w *Watcher) StartChannels(a StartArgs, inputs []Source) {
+func (w *Watch) StartChannels(a StartArgs, inputs []Source) {
 	// No inputs means this node is never hit, so ignore.
 	if len(inputs) <= 0 {
 		return
@@ -53,7 +53,7 @@ func (w *Watcher) StartChannels(a StartArgs, inputs []Source) {
 	}
 }
 
-func (w *Watcher) StartRunning(a StartArgs) error {
+func (w *Watch) StartRunning(a StartArgs) error {
 	if len(w.input.Out) != 1 {
 		return nil
 	}
@@ -106,7 +106,4 @@ func (w *Watcher) StartRunning(a StartArgs) error {
 	}
 
 	return nil
-}
-
-func (w *Watcher) RequestAccess(data *RequestArgs) {
 }

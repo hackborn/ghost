@@ -58,17 +58,23 @@ type Graph struct {
 	// Done channels do nothing but control whether the graph is
 	// running. This lets us cleanly separate channels that are actively
 	// being used, and not tear them down until all nodes have stopped.
-	done		[]chan int
+	done []chan int
 	// Wait for all done channels to end when stopping the graph.
 	nodeWaiter sync.WaitGroup
 	// The collection of channels to my root nodes
-	output     node.Channels
+	output node.Channels
 	// Control handling, to communicate between graph and nodes.
-	control		control
+	control control
 
-//	control    node.Channels
+	//	control    node.Channels
 	// Registered control channels.
-//	regctrl		map[node.Id]chan node.Msg
+	//	regctrl		map[node.Id]chan node.Msg
+}
+
+func NewGraph() *Graph {
+	g := Graph{}
+	g.control.initialize()
+	return &g
 }
 
 func (m *Macros) Expand(cs node.ChangeString) {
@@ -100,13 +106,13 @@ func (g *Graph) NewDoneChannel() chan int {
 }
 
 // Owner interface
-func (g *Graph) NewControlChannel(id node.Id) chan node.Msg {
+func (g *Graph) NewControlChannel(id node.Id) (chan node.Msg, node.Id) {
 	return g.control.newChannel(id)
 }
 
 // Owner interface
-func (g *Graph) SendCmd(cmd node.Cmd, source node.Id) error {
-	return g.control.sendCmd(cmd, source)
+func (g *Graph) SendMsg(msg node.Msg, to node.Id) error {
+	return g.control.sendMsg(msg, to)
 }
 
 func (g *Graph) add(n node.Node) {

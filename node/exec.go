@@ -8,7 +8,13 @@ import (
 	"time"
 )
 
+// -----------------------------------------------
+// Exec struct
 // Run a command.
+// The command runs in a separate gofunc, spawned from
+// the main running gofunc. The command func has ownership
+// over the command, with the main fun being granted access
+// to the command for the sole purpose of killing it if necessary.
 type Exec struct {
 	Id        Id
 	Name      string `xml:"name,attr"`
@@ -16,14 +22,19 @@ type Exec struct {
 	Args      string `xml:"args,attr"`
 	Dir       string `xml:"dir,attr"`
 	Interrupt bool   `xml:"interrupt,attr"`
+	Autorun   bool   `xml:"autorun,attr"`
 	Rerun     bool   `xml:"rerun,attr"`
 	input     Channels
 	Channels  // Output
 	Cmds
 }
 
-func (n *Exec) IsValid() bool {
-	return len(n.Cmd) > 0
+const (
+	blockIdKey = "block_id"
+)
+
+func (e *Exec) IsValid() bool {
+	return len(e.Cmd) > 0
 }
 
 func (e *Exec) GetId() Id {
@@ -85,7 +96,7 @@ func (e *Exec) StartRunning(a StartArgs) error {
 		return errors.New("Can't make done channel")
 	}
 
-	control := a.Owner.NewControlChannel(e.Id)
+	control, _ := a.Owner.NewControlChannel(e.Id)
 	if control == nil {
 		return errors.New("Can't make control channel")
 	}
@@ -95,12 +106,12 @@ func (e *Exec) StartRunning(a StartArgs) error {
 	status := make(chan error)
 
 	a.NodeWaiter.Add(1)
-	go func(done chan int, control chan Msg, merge chan Msg) {
-		var cmd *exec.Cmd = nil
+	go func(owner Owner, done chan int, control chan Msg, merge chan Msg) {
+		var process *exec.Cmd = nil
 		fmt.Println("start exec func")
 		defer a.NodeWaiter.Done()
 		defer fmt.Println("end exec func")
-		defer execCleanup(cmd)
+		defer killExec(process)
 		defer e.CloseChannels()
 		needs_run := false
 
@@ -112,42 +123,47 @@ func (e *Exec) StartRunning(a StartArgs) error {
 				}
 			case msg, more := <-control:
 				if more {
-					// XXX Handle control message
-					fmt.Println("exec control", msg)
 					cmd := CmdFromMsg(msg)
+					fmt.Println("exec", e.Id ,"control msg", msg, "cmd", cmd)
 					if cmd != nil {
-
+						if cmd.Method == cmdStop {
+							fmt.Println("Got stop for", cmd)
+							if process == nil {
+								reply := Cmd{Method: cmdStopReply, TargetId: msg.SenderId}
+								rmsg := reply.AsMsg()
+								rmsg.SetInt(blockIdKey, msg.MustGetInt(blockIdKey))
+								owner.SendMsg(rmsg, msg.SenderId)
+							}
+						}
 					}
-					fmt.Println("exec control cmd", cmd)
 				}
 			case msg, more := <-merge:
 				if more {
 					fmt.Println("exec msg", msg)
-					if cmd == nil {
-						cmd = e.startCmd(status)
+					if process == nil {
+						process = e.runCmd(status)
 					} else {
 						needs_run = true
 					}
 				}
-			case runerr, more := <-status:
+			case err, more := <-status:
 				if more {
-					fmt.Println("run err", runerr)
-					execCleanup(cmd)
-					cmd = nil
+					fmt.Println("run err", err)
+					process = nil
 					if needs_run {
 						needs_run = false
-						cmd = e.startCmd(status)
+						process = e.runCmd(status)
 					}
 				} else {
 					// The channel closed for some unknown reason,
 					// that's an error but shouldn't shut down the graph.
-					execCleanup(cmd)
-					cmd = nil
+					killExec(process)
+					process = nil
 					fmt.Println("exec error: channel closed, cause unknown")
 				}
 			}
 		}
-	}(done, control, merge)
+	}(a.Owner, done, control, merge)
 
 	return nil
 }
@@ -214,17 +230,27 @@ func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
 		return nil, errors.New("Can't make done channel for cmds")
 	}
 
+	control, controlId := a.Owner.NewControlChannel(0)
+	if control == nil {
+		return nil, errors.New("Can't make control channel for cmds")
+	}
+
 	// The cmd runs in a separate gofunc. This channel communicates back to the main func,
 	// returning the result of the run (specifically, exec.Cmd.Wait()).
 	cmds := make(chan Msg)
 
 	a.NodeWaiter.Add(1)
-	go func(owner Owner, merge chan Msg, done chan int, cmds chan Msg) {
+	go func(owner Owner, merge chan Msg, done chan int, cmds chan Msg, control chan Msg, controlId Id) {
 		defer a.NodeWaiter.Done()
 		defer close(cmds)
 
-		//		var last Msg
-		replies := make(map[Id]bool)
+		// Send commands in blocks, and wait to hear back from all members
+		// of a block before proceeding. As soon as we start a new block, the previous is discarded,
+		block_id := 1
+		block_size := 0
+		var block_msg Msg
+		// I don't currently have a "message empty" state, and I don't want to store the pointer, so use this
+		block_has_msg := false
 
 		for {
 			select {
@@ -234,35 +260,49 @@ func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
 				}
 			case msg, more := <-merge:
 				if more {
-					// Send each command to the graph. Clear out replies from
-					// previous runs.
-					replies = make(map[Id]bool)
+					block_id++
+					block_size = 0
+					block_msg = msg
+					block_has_msg = true
 					for _, v := range e.CmdList {
-						err := owner.SendCmd(v, e.Id)
+						m := v.AsMsg()
+						m.SenderId = controlId
+						m.SetInt(blockIdKey, block_id)
+						err := owner.SendMsg(m, v.TargetId)
+						fmt.Println("sent stop err", err, "cmd", v, "controlId", controlId)
 						if err == nil && v.Reply {
-							replies[v.TargetId] = false
+							block_size++
 						}
 					}
-					fmt.Println("reply size", len(replies))
-					//					last = msg
-					fmt.Println("FORWARD")
-					cmds <- msg
+					// If I'm not waiting to hear back from anyone then just send the message
+					if block_size <= 0 {
+						fmt.Println("Send immediate")
+						cmds <- msg
+						block_has_msg = false
+
+					}
+				}
+			case msg, more := <-control:
+				if more {
+					cmd := CmdFromMsg(msg)
+					if cmd != nil {
+						if cmd.Method == cmdStopReply && block_id == msg.MustGetInt(blockIdKey) {
+							block_size--
+							if block_size == 0 && block_has_msg {
+								fmt.Println("Send delayed")
+								cmds <- block_msg
+								block_has_msg = false
+							}
+						}
+					}
 				}
 			}
 		}
-	}(a.Owner, merge, done, cmds)
+	}(a.Owner, merge, done, cmds, control, controlId)
 	return cmds, nil
 }
 
-func execCleanup(cmd *exec.Cmd) {
-	fmt.Println("cleanup 1")
-	if cmd != nil && cmd.Process != nil {
-		fmt.Println("cleanup 2")
-		cmd.Process.Kill()
-	}
-}
-
-func (e *Exec) startCmd(c chan error) *exec.Cmd {
+func (e *Exec) runCmd(c chan error) *exec.Cmd {
 	cmd := e.createCmd()
 	if cmd == nil {
 		return nil
@@ -270,6 +310,7 @@ func (e *Exec) startCmd(c chan error) *exec.Cmd {
 	go func() {
 		fmt.Println("*****run exec", e.Cmd)
 		c <- cmd.Run()
+		fmt.Println("*****exec finished")
 	}()
 	return cmd
 }
@@ -289,5 +330,10 @@ func (e *Exec) createCmd() *exec.Cmd {
 	return cmd
 }
 
-func (e *Exec) RequestAccess(data *RequestArgs) {
+func killExec(cmd *exec.Cmd) {
+	fmt.Println("kill 1")
+	if cmd != nil && cmd.Process != nil {
+		fmt.Println("kill 2")
+		cmd.Process.Kill()
+	}
 }

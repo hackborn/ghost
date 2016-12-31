@@ -83,7 +83,7 @@ func LoadFile(filename string, la LoadArgs) (*Graph, error) {
 	decoder := xml.NewDecoder(xmlFile)
 
 	var builder builder
-	builder.graph = new(Graph)
+	builder.graph = NewGraph()
 
 	for {
 		token, err := decoder.Token()
@@ -160,7 +160,7 @@ func decodeNodes(token xml.Token, decoder *xml.Decoder, builder *builder) {
 		switch ele := token.(type) {
 		case xml.StartElement:
 			if ele.Name.Local == "watcher" {
-				var v node.Watcher
+				var v node.Watch
 				v.Id = id
 				v.Name = ele.Name.Local
 				decoder.DecodeElement(&v, &ele)

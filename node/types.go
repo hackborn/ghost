@@ -11,6 +11,11 @@ import (
 // < 0 is undefined
 type Id int
 
+const (
+	cmdStop = "stop"
+	cmdStopReply = "stopreply"
+)
+
 // Specific commands sent between nodes
 type Cmd struct {
 	XMLName  xml.Name
@@ -24,12 +29,6 @@ type Cmds struct {
 	CmdList []Cmd `xml:",any"`
 }
 
-// Data sent out to Node.RequestAccess.
-type RequestArgs struct {
-	// Any files we're requesting access to.
-	Files []string
-}
-
 // Data sent out to Node.Start.
 type StartArgs struct {
 	Owner Owner
@@ -39,6 +38,7 @@ type StartArgs struct {
 
 // A message passed between nodes.
 type Msg struct {
+	SenderId Id
 	Values map[string]interface{}
 }
 
@@ -63,13 +63,15 @@ type Owner interface {
 	// Note that done channels will always be paired with adding to the
 	// StartArgs NodeWaiter.
 	NewDoneChannel() chan int
-	// Create and answer a new channel (adding it to the source).
-	// If the ID is > 0 then this will be registered as the control
-	// channel for the node.
-	NewControlChannel(id Id) chan Msg
+	// Answer a new channel used to provide communication between the
+	// graph and nodes (and indirectly from node to node). If the Id is
+	// > 0 then this will be registered as the control channel for the node.
+	// Answer the Id this channel is registered at, which will either be
+	// the Id supplied, or, if that wasn't valid, an auto-generated one.
+	NewControlChannel(id Id) (chan Msg, Id)
 
 	// Send a command from a source.
-	SendCmd(cmd Cmd, source Id) error
+	SendMsg(msg Msg, to Id) error
 }
 
 // Bundle behaviour for managing Node input/output channels.
@@ -97,10 +99,6 @@ type Node interface {
 	// Set target IDs (for commands)
 	// XXX I think this will be deprecated when I rewrite XML load with 1.8.
 	FillIds(get GetId)
-
-	// Received when a node is
-	// XXX Should be deprecated
-	RequestAccess(data *RequestArgs)
 }
 
 func CmdFromMsg(m Msg) *Cmd {
@@ -128,6 +126,42 @@ func (c *Cmds) FillIds(get GetId) {
 		cmd := &c.CmdList[i]
 		cmd.TargetId = get.GetId(cmd.Target)
 	}
+}
+
+func (m *Msg) SetInt(key string, value int) error {
+	if m.Values == nil {
+		m.Values = make(map[string]interface{})
+	}
+	m.Values[key] = value
+	return nil
+}
+
+func (m *Msg) MustGetInt(key string) int {
+	s, _ := m.GetInt(key)
+	return s
+}
+
+func (m *Msg) GetInt(key string) (int, bool) {
+	if m.Values == nil {
+		return 0, false
+	}
+	ii, ok := m.Values[key]
+	if !ok {
+		return 0, false
+	}
+	i, ok := ii.(int)
+	if !ok {
+		return 0, false
+	}
+	return i, true
+}
+
+func (m *Msg) SetString(key string, value string) error {
+	if m.Values == nil {
+		m.Values = make(map[string]interface{})
+	}
+	m.Values[key] = value
+	return nil
 }
 
 func (m *Msg) MustGetString(key string) string {
