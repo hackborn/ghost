@@ -29,6 +29,19 @@ type Cmds struct {
 	CmdList []Cmd `xml:",any"`
 }
 
+type Prepare interface {
+}
+
+type Start interface {
+	// Answer the channel that determines whether the graph is running.
+	// There is nothing to read from this channel; when it's closed, the
+	// node should stop running. Note that this implies a new go func is
+	// being created, which should always be paired with adding to the
+	// Start.GetDoneWaiter.
+	GetDoneChannel() chan int
+	GetDoneWaiter() *sync.WaitGroup
+}
+
 // Data sent out to Node.Start.
 type StartArgs struct {
 	Owner Owner
@@ -93,6 +106,14 @@ type Node interface {
 
 	ApplyArgs(cs ChangeString)
 	NewChannel() chan Msg
+
+	// Running the node happens in two stages: First Prepare is
+	// called, where the node should construct all data it will
+	// need for the run, placing that in the returned interface.
+	// Next Start is called, where the node is supplied the interface.
+	PrepareToStart(p Prepare, inputs []Source) (interface{}, error)
+	Start(s Start, data interface{}) error
+
 	// Starting the graph goes through a two-step process on each
 	// node: First all channels are generated, then they are run.
 	StartChannels(a StartArgs, inputs []Source)

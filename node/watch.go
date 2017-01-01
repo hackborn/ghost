@@ -3,6 +3,7 @@ package node
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -10,12 +11,13 @@ type Folder struct {
 	Path string `xml:",chardata"`
 }
 
+// -----------------------------------------------
+// Watch struct
 // Watch a folder path, emitting messages when it changes.
 type Watch struct {
 	Id       Id
 	Name     string   `xml:"name,attr"`
 	Folders  []Folder `xml:"folder"`
-	input    Channels
 	Channels // Output
 	Cmds
 }
@@ -35,44 +37,53 @@ func (w *Watch) ApplyArgs(cs ChangeString) {
 	}
 }
 
-func (w *Watch) StartChannels(a StartArgs, inputs []Source) {
+func (w *Watch) PrepareToStart(p Prepare, inputs []Source) (interface{}, error) {
 	// No inputs means this node is never hit, so ignore.
 	if len(inputs) <= 0 {
-		return
+		return nil, nil
 	}
+
 	// If we want multiple inputs, we'll need to expand the running
 	// code to handle merging.
 	if len(inputs) != 1 {
-		fmt.Println("node.Watcher.Start() must have 1 input (for now)", len(inputs))
-		return
+		fmt.Println("node.Watch.Start() must have 1 input (for now)", len(inputs))
+		return nil, errors.New("node.Watch does not support multiple inputs")
 	}
 
-	w.input.CloseChannels()
+	data := prepareData{}
 	for _, i := range inputs {
-		w.input.Add(i.NewChannel())
+		data.input.Add(i.NewChannel())
 	}
+
+	return data, nil
 }
 
-func (w *Watch) StartRunning(a StartArgs) error {
-	if len(w.input.Out) != 1 {
-		return nil
+func (w *Watch) Start(s Start, idata interface{}) error {
+	data, ok := idata.(prepareData)
+	if !ok {
+		return errors.New("node.Watch no prepareData")
 	}
-	fmt.Println("Start watch", w, "ins", len(w.input.Out), "outs", len(w.Out))
+	if len(data.input.Out) != 1 {
+		return errors.New("node.Watch no inputs")
+	}
+	fmt.Println("Start watch", w, "ins", len(data.input.Out), "outs", len(w.Out))
 
-	done := a.Owner.DoneChannel()
+	done := s.GetDoneChannel()
+	waiter := s.GetDoneWaiter()
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		fmt.Println("watch err", err)
 		return errors.New("Watch won't start")
 	}
 
-	a.NodeWaiter.Add(1)
-	go func(done chan int) {
-		fmt.Println("start watch func")
-		defer a.NodeWaiter.Done()
+	waiter.Add(1)
+	go func(done chan int, waiter *sync.WaitGroup, data prepareData) {
+		defer waiter.Done()
 		defer fmt.Println("end watch func")
 		defer w.CloseChannels()
 		defer watcher.Close()
+
+		fmt.Println("start watch func")
 
 		for {
 			select {
@@ -80,7 +91,7 @@ func (w *Watch) StartRunning(a StartArgs) error {
 				if !more {
 					return
 				}
-			case _, imore := <-w.input.Out[0]:
+			case _, imore := <-data.input.Out[0]:
 				if !imore {
 					return
 				}
@@ -94,7 +105,7 @@ func (w *Watch) StartRunning(a StartArgs) error {
 				fmt.Println("error:", err)
 			}
 		}
-	}(done)
+	}(done, waiter, data)
 
 	err = watcher.Add("C:/work/dev/go/src/github.com/hackborn/ghost")
 	if err != nil {
@@ -102,4 +113,18 @@ func (w *Watch) StartRunning(a StartArgs) error {
 	}
 
 	return nil
+}
+
+func (w *Watch) StartChannels(a StartArgs, inputs []Source) {
+}
+
+func (w *Watch) StartRunning(a StartArgs) error {
+	return nil
+}
+
+// -----------------------------------------------
+// prepareData struct
+// Store data generate in the Prepare.
+type prepareData struct {
+	input    Channels
 }

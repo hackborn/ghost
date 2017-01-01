@@ -58,6 +58,14 @@ func (e *Exec) ApplyArgs(cs ChangeString) {
 	e.Dir = cs.ChangeString(e.Dir)
 }
 
+func (e *Exec) PrepareToStart(p Prepare, inputs []Source) (interface{}, error) {
+	return nil, nil
+}
+
+func (e *Exec) Start(s Start, data interface{}) error {
+	return nil
+}
+
 func (e *Exec) StartChannels(a StartArgs, inputs []Source) {
 	e.input.CloseChannels()
 

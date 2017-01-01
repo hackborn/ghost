@@ -94,6 +94,17 @@ func (g *Graph) NewChannel() chan node.Msg {
 	return g.output.NewChannel()
 }
 
+// Prepare interface
+
+// Start interface
+func (g *Graph) GetDoneChannel() chan int {
+	return g.done
+}
+
+func (g *Graph) GetDoneWaiter() *sync.WaitGroup {
+	return &g.nodeWaiter
+}
+
 // Owner interface
 func (g *Graph) DoneChannel() chan int {
 	return g.done
@@ -134,11 +145,31 @@ func (g *Graph) Start() error {
 	}
 	a := node.StartArgs{g, &g.nodeWaiter}
 
+	// Construct all node data
+	for i := 0; i < len(g._nodes); i++ {
+		n := &(g._nodes[i])
+		if n.node != nil && len(n.inputs) > 0 {
+			data, err := n.node.PrepareToStart(g, n.inputs)
+			if err != nil {
+				return err
+			}
+			n.prepare = data
+		}
+	}
+
 	// Create all the channel connections
 	for i := 0; i < len(g._nodes); i++ {
 		n := &(g._nodes[i])
 		if n.node != nil && len(n.inputs) > 0 {
 			n.node.StartChannels(a, n.inputs)
+		}
+	}
+
+	// Start each node
+	for i := 0; i < len(g._nodes); i++ {
+		n := &(g._nodes[i])
+		if n.node != nil {
+			n.node.Start(g, n.prepare)
 		}
 	}
 
@@ -174,4 +205,6 @@ func (g *Graph) Stop() {
 type graphnode struct {
 	node   node.Node
 	inputs []node.Source
+	// Data generated from node.PrepareToStart
+	prepare interface{}
 }
