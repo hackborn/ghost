@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sync"
 	"time"
 )
 
@@ -24,8 +25,8 @@ type Exec struct {
 	Interrupt bool   `xml:"interrupt,attr"`
 	Autorun   bool   `xml:"autorun,attr"`
 	Rerun     bool   `xml:"rerun,attr"`
-	input     Channels
-	Channels  // Output
+	//	input     Channels
+	Channels // Output
 	Cmds
 }
 
@@ -59,71 +60,85 @@ func (e *Exec) ApplyArgs(cs ChangeString) {
 }
 
 func (e *Exec) PrepareToStart(p Prepare, inputs []Source) (interface{}, error) {
-	return nil, nil
-}
-
-func (e *Exec) Start(s Start, data interface{}) error {
-	return nil
-}
-
-func (e *Exec) StartChannels(a StartArgs, inputs []Source) {
-	e.input.CloseChannels()
-
 	// No inputs means this node is never hit, so ignore.
 	if len(inputs) <= 0 {
-		return
+		return nil, nil
 	}
 
 	// If we want multiple inputs, we'll need to expand the running
 	// code to handle merging.
 	if len(inputs) != 1 {
 		fmt.Println("node.Exec.Start() must have 1 input (for now)", len(inputs))
-		return
+		return nil, errors.New("node.Exec.Start does not support multiple inputs")
 	}
 
-	for _, i := range inputs {
-		e.input.Add(i.NewChannel())
+	data := prepareDataExec{}
+	data.mainControlChan, _ = p.NewControlChannel(e.Id)
+	if data.mainControlChan == nil {
+		return nil, errors.New("node.Exec can't make control channel")
 	}
-}
-
-func (e *Exec) StartRunning(a StartArgs) error {
-	fmt.Println("Start exec", e, "ins", len(e.input.Out), "outs", len(e.Out))
-	merge, err := e.startMerge(a)
-	if err != nil {
-		fmt.Println("exec.StartRunning: ", err)
-		return err
+	data.mergeChan = make(chan Msg)
+	if data.mergeChan == nil {
+		return nil, errors.New("node.Exec can't make merge channel")
 	}
-	if merge == nil {
-		return nil
-	}
-
-	// If we have any commands, insert a handling stage between merge and my exec routine.
 	if len(e.CmdList) > 0 {
-		merge, err = e.startCmds(a, merge)
-		if err != nil {
-			fmt.Println("exec.StartRunning: ", err)
-			return err
+		data.cmdChan = make(chan Msg)
+		if data.cmdChan == nil {
+			return nil, errors.New("node.Exec can't make cmd channel")
+		}
+		data.cmdControlChan, data.cmdControlChanId = p.NewControlChannel(0)
+		if data.cmdControlChan == nil {
+			return nil, errors.New("node.Exec can't make cmd control channel")
 		}
 	}
 
-	done := a.Owner.DoneChannel()
-	control, _ := a.Owner.NewControlChannel(e.Id)
-	if control == nil {
-		return errors.New("Can't make control channel")
+	for _, i := range inputs {
+		data.input.Add(i.NewChannel())
+	}
+
+	return data, nil
+}
+
+func (e *Exec) Start(s Start, idata interface{}) error {
+	data, ok := idata.(prepareDataExec)
+	if !ok {
+		return errors.New("node.Exec no prepareData")
+	}
+	if len(data.input.Out) != 1 {
+		return errors.New("node.Exec no inputs")
+	}
+	fmt.Println("Start exec", e, "ins", len(data.input.Out), "outs", len(e.Out))
+
+	inputChan := data.mergeChan
+	err := e.startMerge(s, data)
+	if err != nil {
+		return err
+	}
+	// If we have any commands, insert a handling stage between merge and my exec routine.
+	if data.cmdChan != nil {
+		err = e.startCmds(s, data, inputChan)
+		if err != nil {
+			return err
+		}
+		inputChan = data.cmdChan
 	}
 
 	// The cmd runs in a separate gofunc. This channel communicates back to the main func,
 	// returning the result of the run (specifically, exec.Cmd.Wait()).
 	status := make(chan error)
 
-	a.NodeWaiter.Add(1)
-	go func(owner Owner, done chan int, control chan Msg, merge chan Msg) {
+	done := s.GetDoneChannel()
+	waiter := s.GetDoneWaiter()
+	waiter.Add(1)
+	go func(owner Owner, done chan int, waiter *sync.WaitGroup, data prepareDataExec, inputChan chan Msg) {
 		var process *exec.Cmd = nil
-		fmt.Println("start exec func")
-		defer a.NodeWaiter.Done()
+
+		defer waiter.Done()
 		defer fmt.Println("end exec func")
 		defer killExec(process)
 		defer e.CloseChannels()
+
+		fmt.Println("start exec func")
 
 		needs_run := false
 		in_stop := false
@@ -139,7 +154,7 @@ func (e *Exec) StartRunning(a StartArgs) error {
 				if !more {
 					return
 				}
-			case msg, more := <-control:
+			case msg, more := <-data.mainControlChan:
 				if more {
 					cmd := CmdFromMsg(msg)
 					fmt.Println("exec", e.Id, "control msg", msg, "cmd", cmd)
@@ -159,7 +174,7 @@ func (e *Exec) StartRunning(a StartArgs) error {
 						}
 					}
 				}
-			case msg, more := <-merge:
+			case msg, more := <-inputChan:
 				if more {
 					fmt.Println("exec msg", msg)
 					if process == nil {
@@ -194,33 +209,25 @@ func (e *Exec) StartRunning(a StartArgs) error {
 				}
 			}
 		}
-	}(a.Owner, done, control, merge)
+	}(s.GetOwner(), done, waiter, data, inputChan)
 
 	return nil
 }
 
-func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
-	// Must have 1 someone upstream, or else this is useless.
-	// However, this isn't currently an error, it's just an orphan
-	// node that won't run.
-	if len(e.input.Out) != 1 {
-		return nil, nil
-	}
-
-	done := a.Owner.DoneChannel()
-	// A forwarding channel to the main go function.
-	merge := make(chan Msg)
-
+func (e *Exec) startMerge(s Start, data prepareDataExec) error {
 	// Route incoming messages through a timer, which prevents multiple calls
 	timer := time.NewTimer(time.Hour)
 	if !timer.Stop() {
 		<-timer.C
 	}
 
-	a.NodeWaiter.Add(1)
-	go func(timer *time.Timer, merge chan Msg, done chan int) {
-		defer a.NodeWaiter.Done()
-		defer close(merge)
+	done := s.GetDoneChannel()
+	waiter := s.GetDoneWaiter()
+
+	waiter.Add(1)
+	go func(done chan int, waiter *sync.WaitGroup, timer *time.Timer, data prepareDataExec) {
+		defer waiter.Done()
+		defer close(data.mergeChan)
 
 		var last Msg
 
@@ -235,35 +242,29 @@ func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
 				if !more {
 					return
 				}
-			case msg, more := <-e.input.Out[0]:
+			case msg, more := <-data.input.Out[0]:
 				if more {
 					last = msg
 					timer.Reset(100 * time.Millisecond)
 				}
 			case <-timer.C:
-				merge <- last
+				data.mergeChan <- last
 			}
 		}
-	}(timer, merge, done)
-	return merge, nil
+	}(done, waiter, timer, data)
+	return nil
 }
 
-func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
-	done := a.Owner.DoneChannel()
-	control, controlId := a.Owner.NewControlChannel(0)
-	if control == nil {
-		return nil, errors.New("Can't make control channel for cmds")
-	}
+func (e *Exec) startCmds(s Start, data prepareDataExec, inputChan chan Msg) error {
+	done := s.GetDoneChannel()
+	waiter := s.GetDoneWaiter()
 
-	// A forwarding channel to the main go function.
-	cmds := make(chan Msg)
+	waiter.Add(1)
+	go func(done chan int, waiter *sync.WaitGroup, owner Owner, data prepareDataExec, inputChan chan Msg) {
+		defer waiter.Done()
+		defer close(data.cmdChan)
 
-	a.NodeWaiter.Add(1)
-	go func(owner Owner, merge chan Msg, done chan int, cmds chan Msg, control chan Msg, controlId Id) {
-		defer a.NodeWaiter.Done()
-		defer close(cmds)
-
-		handler := newHandleFromCmds(owner, controlId, e.CmdList, cmds)
+		handler := newHandleFromCmds(owner, data.cmdControlChanId, e.CmdList, data.cmdChan)
 
 		for {
 			select {
@@ -271,18 +272,18 @@ func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
 				if !more {
 					return
 				}
-			case msg, more := <-merge:
+			case msg, more := <-inputChan:
 				if more {
 					handler.handle(&msg, fromMerge)
 				}
-			case msg, more := <-control:
+			case msg, more := <-data.cmdControlChan:
 				if more {
 					handler.handle(&msg, fromControl)
 				}
 			}
 		}
-	}(a.Owner, merge, done, cmds, control, controlId)
-	return cmds, nil
+	}(done, waiter, s.GetOwner(), data, inputChan)
+	return nil
 }
 
 func (e *Exec) runProcess(c chan error) *exec.Cmd {
@@ -401,4 +402,18 @@ func (h *handleFromCmds) send(msg *Msg) {
 		h.cmds <- *msg
 		h.block_has_msg = false
 	}
+}
+
+// -----------------------------------------------
+// prepareDataExec struct
+// Store data generate in the Prepare.
+type prepareDataExec struct {
+	input Channels
+	// Forwarding channels to the main go function.
+	mergeChan chan Msg
+	cmdChan   chan Msg
+	// Control channels for my various stages.
+	mainControlChan  chan Msg
+	cmdControlChan   chan Msg
+	cmdControlChanId Id
 }

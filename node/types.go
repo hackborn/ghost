@@ -30,6 +30,12 @@ type Cmds struct {
 }
 
 type Prepare interface {
+	// Answer a new channel used to provide communication between the
+	// graph and nodes (and indirectly from node to node). If the Id is
+	// > 0 then this will be registered as the control channel for the node.
+	// Answer the Id this channel is registered at, which will either be
+	// the Id supplied, or, if that wasn't valid, an auto-generated one.
+	NewControlChannel(id Id) (chan Msg, Id)
 }
 
 type Start interface {
@@ -40,13 +46,8 @@ type Start interface {
 	// Start.GetDoneWaiter.
 	GetDoneChannel() chan int
 	GetDoneWaiter() *sync.WaitGroup
-}
-
-// Data sent out to Node.Start.
-type StartArgs struct {
-	Owner Owner
-	// A graph lock so we can wait for all nodes to finish running.
-	NodeWaiter *sync.WaitGroup
+	// Get access to a message-sending object.
+	GetOwner() Owner
 }
 
 // A message passed between nodes.
@@ -72,19 +73,6 @@ type GetId interface {
 // A node owner. Provide an API for various functions and a channel
 // to receive control events.
 type Owner interface {
-	// Answer the channel that determines whether the graph is running.
-	// There is nothing to read from this channel; when it's closed, the
-	// node should stop running. Note that this implies a new go func is
-	// being created, which should always be paired with adding to the
-	// StartArgs NodeWaiter.
-	DoneChannel() chan int
-	// Answer a new channel used to provide communication between the
-	// graph and nodes (and indirectly from node to node). If the Id is
-	// > 0 then this will be registered as the control channel for the node.
-	// Answer the Id this channel is registered at, which will either be
-	// the Id supplied, or, if that wasn't valid, an auto-generated one.
-	NewControlChannel(id Id) (chan Msg, Id)
-
 	// Send a command from a source.
 	SendMsg(msg Msg, to Id) error
 }
@@ -113,11 +101,6 @@ type Node interface {
 	// Next Start is called, where the node is supplied the interface.
 	PrepareToStart(p Prepare, inputs []Source) (interface{}, error)
 	Start(s Start, data interface{}) error
-
-	// Starting the graph goes through a two-step process on each
-	// node: First all channels are generated, then they are run.
-	StartChannels(a StartArgs, inputs []Source)
-	StartRunning(a StartArgs) error
 
 	// Set target IDs (for commands)
 	// XXX I think this will be deprecated when I rewrite XML load with 1.8.

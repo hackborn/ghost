@@ -3,8 +3,8 @@ package node
 import (
 	"errors"
 	"fmt"
-	"sync"
 	"github.com/fsnotify/fsnotify"
+	"sync"
 )
 
 type Folder struct {
@@ -18,7 +18,7 @@ type Watch struct {
 	Id       Id
 	Name     string   `xml:"name,attr"`
 	Folders  []Folder `xml:"folder"`
-	Channels // Output
+	Channels          // Output
 	Cmds
 }
 
@@ -50,7 +50,7 @@ func (w *Watch) PrepareToStart(p Prepare, inputs []Source) (interface{}, error) 
 		return nil, errors.New("node.Watch does not support multiple inputs")
 	}
 
-	data := prepareData{}
+	data := prepareDataWatch{}
 	for _, i := range inputs {
 		data.input.Add(i.NewChannel())
 	}
@@ -59,7 +59,7 @@ func (w *Watch) PrepareToStart(p Prepare, inputs []Source) (interface{}, error) 
 }
 
 func (w *Watch) Start(s Start, idata interface{}) error {
-	data, ok := idata.(prepareData)
+	data, ok := idata.(prepareDataWatch)
 	if !ok {
 		return errors.New("node.Watch no prepareData")
 	}
@@ -68,16 +68,16 @@ func (w *Watch) Start(s Start, idata interface{}) error {
 	}
 	fmt.Println("Start watch", w, "ins", len(data.input.Out), "outs", len(w.Out))
 
-	done := s.GetDoneChannel()
-	waiter := s.GetDoneWaiter()
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		fmt.Println("watch err", err)
 		return errors.New("Watch won't start")
 	}
 
+	done := s.GetDoneChannel()
+	waiter := s.GetDoneWaiter()
 	waiter.Add(1)
-	go func(done chan int, waiter *sync.WaitGroup, data prepareData) {
+	go func(done chan int, waiter *sync.WaitGroup, data prepareDataWatch) {
 		defer waiter.Done()
 		defer fmt.Println("end watch func")
 		defer w.CloseChannels()
@@ -115,16 +115,9 @@ func (w *Watch) Start(s Start, idata interface{}) error {
 	return nil
 }
 
-func (w *Watch) StartChannels(a StartArgs, inputs []Source) {
-}
-
-func (w *Watch) StartRunning(a StartArgs) error {
-	return nil
-}
-
 // -----------------------------------------------
-// prepareData struct
+// prepareDataWatch struct
 // Store data generate in the Prepare.
-type prepareData struct {
-	input    Channels
+type prepareDataWatch struct {
+	input Channels
 }

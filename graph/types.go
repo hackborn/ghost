@@ -95,6 +95,9 @@ func (g *Graph) NewChannel() chan node.Msg {
 }
 
 // Prepare interface
+func (g *Graph) NewControlChannel(id node.Id) (chan node.Msg, node.Id) {
+	return g.control.newChannel(id)
+}
 
 // Start interface
 func (g *Graph) GetDoneChannel() chan int {
@@ -105,14 +108,8 @@ func (g *Graph) GetDoneWaiter() *sync.WaitGroup {
 	return &g.nodeWaiter
 }
 
-// Owner interface
-func (g *Graph) DoneChannel() chan int {
-	return g.done
-}
-
-// Owner interface
-func (g *Graph) NewControlChannel(id node.Id) (chan node.Msg, node.Id) {
-	return g.control.newChannel(id)
+func (g *Graph) GetOwner() node.Owner {
+	return g
 }
 
 // Owner interface
@@ -143,7 +140,6 @@ func (g *Graph) Start() error {
 	if g.done == nil {
 		return errors.New("Can't make done channel")
 	}
-	a := node.StartArgs{g, &g.nodeWaiter}
 
 	// Construct all node data
 	for i := 0; i < len(g._nodes); i++ {
@@ -157,27 +153,11 @@ func (g *Graph) Start() error {
 		}
 	}
 
-	// Create all the channel connections
-	for i := 0; i < len(g._nodes); i++ {
-		n := &(g._nodes[i])
-		if n.node != nil && len(n.inputs) > 0 {
-			n.node.StartChannels(a, n.inputs)
-		}
-	}
-
 	// Start each node
 	for i := 0; i < len(g._nodes); i++ {
 		n := &(g._nodes[i])
 		if n.node != nil {
 			n.node.Start(g, n.prepare)
-		}
-	}
-
-	// Start each node
-	for i := 0; i < len(g._nodes); i++ {
-		n := &(g._nodes[i])
-		if n.node != nil {
-			n.node.StartRunning(a)
 		}
 	}
 
