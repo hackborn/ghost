@@ -12,7 +12,7 @@ import (
 type Id int
 
 const (
-	cmdStop = "stop"
+	cmdStop      = "stop"
 	cmdStopReply = "stopreply"
 )
 
@@ -39,7 +39,7 @@ type StartArgs struct {
 // A message passed between nodes.
 type Msg struct {
 	SenderId Id
-	Values map[string]interface{}
+	Values   map[string]interface{}
 }
 
 // Provide access to the source feeding into a node.

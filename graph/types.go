@@ -2,6 +2,7 @@ package graph
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"github.com/hackborn/ghost/node"
 	"strings"
@@ -124,10 +125,13 @@ func (g *Graph) addInput(n node.Node, s node.Source) {
 	}
 }
 
-func (g *Graph) Start() {
+func (g *Graph) Start() error {
 	g.Stop()
 
 	g.done = make(chan int)
+	if g.done == nil {
+		return errors.New("Can't make done channel")
+	}
 	a := node.StartArgs{g, &g.nodeWaiter}
 
 	// Create all the channel connections
@@ -145,6 +149,8 @@ func (g *Graph) Start() {
 			n.node.StartRunning(a)
 		}
 	}
+
+	return nil
 }
 
 func (g *Graph) Stop() {
@@ -152,7 +158,7 @@ func (g *Graph) Stop() {
 	if g.done == nil {
 		return
 	}
-	
+
 	// Stop all nodes...
 	close(g.done)
 	g.done = nil

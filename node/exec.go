@@ -29,6 +29,13 @@ type Exec struct {
 	Cmds
 }
 
+type fromChan int
+
+const (
+	fromMerge fromChan = iota
+	fromControl
+)
+
 const (
 	blockIdKey = "block_id"
 )
@@ -92,10 +99,6 @@ func (e *Exec) StartRunning(a StartArgs) error {
 	}
 
 	done := a.Owner.DoneChannel()
-	if done == nil {
-		return errors.New("Can't make done channel")
-	}
-
 	control, _ := a.Owner.NewControlChannel(e.Id)
 	if control == nil {
 		return errors.New("Can't make control channel")
@@ -131,7 +134,7 @@ func (e *Exec) StartRunning(a StartArgs) error {
 			case msg, more := <-control:
 				if more {
 					cmd := CmdFromMsg(msg)
-					fmt.Println("exec", e.Id ,"control msg", msg, "cmd", cmd)
+					fmt.Println("exec", e.Id, "control msg", msg, "cmd", cmd)
 					if cmd != nil {
 						if cmd.Method == cmdStop {
 							fmt.Println("Got stop for", cmd)
@@ -197,12 +200,7 @@ func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
 	}
 
 	done := a.Owner.DoneChannel()
-	if done == nil {
-		return nil, errors.New("Can't make done channel for merge")
-	}
-
-	// The cmd runs in a separate gofunc. This channel communicates back to the main func,
-	// returning the result of the run (specifically, exec.Cmd.Wait()).
+	// A forwarding channel to the main go function.
 	merge := make(chan Msg)
 
 	// Route incoming messages through a timer, which prevents multiple calls
@@ -233,8 +231,6 @@ func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
 				if more {
 					last = msg
 					timer.Reset(100 * time.Millisecond)
-				} else {
-					return
 				}
 			case <-timer.C:
 				merge <- last
@@ -246,17 +242,12 @@ func (e *Exec) startMerge(a StartArgs) (chan Msg, error) {
 
 func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
 	done := a.Owner.DoneChannel()
-	if done == nil {
-		return nil, errors.New("Can't make done channel for cmds")
-	}
-
 	control, controlId := a.Owner.NewControlChannel(0)
 	if control == nil {
 		return nil, errors.New("Can't make control channel for cmds")
 	}
 
-	// The cmd runs in a separate gofunc. This channel communicates back to the main func,
-	// returning the result of the run (specifically, exec.Cmd.Wait()).
+	// A forwarding channel to the main go function.
 	cmds := make(chan Msg)
 
 	a.NodeWaiter.Add(1)
@@ -264,13 +255,7 @@ func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
 		defer a.NodeWaiter.Done()
 		defer close(cmds)
 
-		// Send commands in blocks, and wait to hear back from all members
-		// of a block before proceeding. As soon as we start a new block, the previous is discarded,
-		block_id := 1
-		block_size := 0
-		var block_msg Msg
-		// I don't currently have a "message empty" state, and I don't want to store the pointer, so use this
-		block_has_msg := false
+		handler := newHandleFromCmds(owner, controlId, e.CmdList, cmds)
 
 		for {
 			select {
@@ -280,41 +265,11 @@ func (e *Exec) startCmds(a StartArgs, merge chan Msg) (chan Msg, error) {
 				}
 			case msg, more := <-merge:
 				if more {
-					block_id++
-					block_size = 0
-					block_msg = msg
-					block_has_msg = true
-					for _, v := range e.CmdList {
-						m := v.AsMsg()
-						m.SenderId = controlId
-						m.SetInt(blockIdKey, block_id)
-						err := owner.SendMsg(m, v.TargetId)
-						fmt.Println("sent stop err", err, "cmd", v, "controlId", controlId)
-						if err == nil && v.Reply {
-							block_size++
-						}
-					}
-					// If I'm not waiting to hear back from anyone then just send the message
-					if block_size <= 0 {
-						fmt.Println("Send immediate")
-						cmds <- msg
-						block_has_msg = false
-
-					}
+					handler.handle(&msg, fromMerge)
 				}
 			case msg, more := <-control:
 				if more {
-					cmd := CmdFromMsg(msg)
-					if cmd != nil {
-						if cmd.Method == cmdStopReply && block_id == msg.MustGetInt(blockIdKey) {
-							block_size--
-							if block_size == 0 && block_has_msg {
-								fmt.Println("Send delayed")
-								cmds <- block_msg
-								block_has_msg = false
-							}
-						}
-					}
+					handler.handle(&msg, fromControl)
 				}
 			}
 		}
@@ -355,5 +310,87 @@ func killExec(cmd *exec.Cmd) {
 	if cmd != nil && cmd.Process != nil {
 		fmt.Println("kill 2")
 		cmd.Process.Kill()
+	}
+}
+
+// -----------------------------------------------
+// handleFromCmds struct
+// Handle messages received from the command func.
+// The primary purpose is to intercept the messages,
+// run my list of commands, then potentially wait for
+// the commands to finish before forwarding the message.
+//
+// Note that a side effect is that messages can get
+// lost, if I happen to receive a new one while waiting
+// to hear the response from my commands after a previous
+// message.
+type handleFromCmds struct {
+	// Send commands in blocks, and wait to hear back from all members
+	// of a block before proceeding. As soon as we start a new block, the previous is discarded,
+	block_id   int
+	block_size int
+	block_msg  Msg
+	// I don't currently have a "message empty" state, and I don't want to store the pointer, so use this
+	block_has_msg bool
+	owner         Owner
+	controlId     Id
+	cmdList       []Cmd
+	cmds          chan Msg
+}
+
+func newHandleFromCmds(owner Owner, controlId Id, cmdList []Cmd, cmds chan Msg) *handleFromCmds {
+	return &handleFromCmds{1, 0, Msg{}, false, owner, controlId, cmdList, cmds}
+}
+
+func (h *handleFromCmds) handle(msg *Msg, from fromChan) {
+	if msg == nil {
+		return
+	}
+	if from == fromMerge {
+		h.handleFromMerge(msg)
+	} else if from == fromControl {
+		h.handleFromControl(msg)
+	}
+}
+
+func (h *handleFromCmds) handleFromMerge(msg *Msg) {
+	h.block_id++
+	h.block_size = 0
+	h.block_msg = *msg
+	h.block_has_msg = true
+	for _, v := range h.cmdList {
+		m := v.AsMsg()
+		m.SenderId = h.controlId
+		m.SetInt(blockIdKey, h.block_id)
+		err := h.owner.SendMsg(m, v.TargetId)
+		fmt.Println("sent stop err", err, "cmd", v, "controlId", h.controlId)
+		if err == nil && v.Reply {
+			h.block_size++
+		}
+	}
+	// If I'm not waiting to hear back from anyone then just send the message
+	if h.block_size <= 0 {
+		fmt.Println("Send immediate")
+		h.send(msg)
+	}
+}
+
+func (h *handleFromCmds) handleFromControl(msg *Msg) {
+	cmd := CmdFromMsg(*msg)
+	if cmd != nil {
+		if cmd.Method == cmdStopReply && h.block_id == msg.MustGetInt(blockIdKey) {
+			h.block_size--
+			if h.block_size == 0 && h.block_has_msg {
+				fmt.Println("Send delayed")
+				h.send(&h.block_msg)
+			}
+		}
+	}
+}
+
+func (h *handleFromCmds) send(msg *Msg) {
+	if msg != nil {
+		h.cmds <- *msg
+		h.block_has_msg = false
 	}
 }

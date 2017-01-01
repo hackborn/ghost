@@ -14,7 +14,7 @@ import (
 // Manage channels responsibile for communicating between the grapnh and its nodes.
 type control struct {
 	// All control channelers
-	all node.Channels
+	all    node.Channels
 	autoid node.Id
 	// Registered control channels addressable via a Send().
 	// This is accessed from multiple threads, so protect it.
