@@ -79,6 +79,10 @@ func (e *Exec) PrepareToStart(p Prepare, inputs []Source) (interface{}, error) {
 	if data.mainControlChan == nil {
 		return nil, errors.New("node.Exec can't make control channel")
 	}
+	data.mainStatusChan = make(chan error)
+	if data.mainStatusChan == nil {
+		return nil, errors.New("node.Exec can't make status channel")
+	}
 	data.mergeChan = make(chan Msg)
 	if data.mergeChan == nil {
 		return nil, errors.New("node.Exec can't make merge channel")
@@ -125,16 +129,12 @@ func (e *Exec) Start(s Start, idata interface{}) error {
 		inputChan = data.cmdChan
 	}
 
-	// The cmd runs in a separate gofunc. This channel communicates back to the main func,
-	// returning the result of the run (specifically, exec.Cmd.Wait()).
-	status := make(chan error)
-
 	done := s.GetDoneChannel()
 	waiter := s.GetDoneWaiter()
 	waiter.Add(1)
 	go func(owner Owner, done chan struct{}, waiter *sync.WaitGroup, data prepareDataExec, inputChan chan Msg) {
 		proc := process{e.Cmd, e.Args, e.Dir, nil}
-		handler := newHandleFromMain(owner, &proc, status, e)
+		handler := newHandleFromMain(owner, &proc, data.mainStatusChan, e)
 
 		defer waiter.Done()
 		defer fmt.Println("end exec func")
@@ -144,7 +144,7 @@ func (e *Exec) Start(s Start, idata interface{}) error {
 		fmt.Println("start exec func")
 
 		if e.Autorun {
-			proc.run(status)
+			proc.run(data.mainStatusChan)
 		}
 
 		for {
@@ -159,7 +159,7 @@ func (e *Exec) Start(s Start, idata interface{}) error {
 				if more {
 					handler.handleMsg(&msg, fromInput)
 				}
-			case err, more := <-status:
+			case err, more := <-data.mainStatusChan:
 				if more {
 					handler.handleErr(err, fromStatus)
 				} else {
@@ -425,6 +425,9 @@ type prepareDataExec struct {
 	mainControlChan  chan Msg
 	cmdControlChan   chan Msg
 	cmdControlChanId Id
+	// The cmd runs in a separate gofunc. This channel communicates back to the main func,
+	// returning the result of the run (specifically, exec.Cmd.Run()).
+	mainStatusChan chan error
 }
 
 // process manages an exec cmd.
