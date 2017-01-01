@@ -26,21 +26,8 @@ func main() {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		//        cleanup()
-		fmt.Println("signal quit")
 		done <- true
 	}()
-	/*
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, os.Interrupt)
-		go func(){
-		    for sig := range c {
-		    	fmt.Println("GOT SIGNAL", sig)
-		        // sig is a ^C, handle it
-		        log.Fatal("signal")
-		    }
-		}()
-	*/
 
 	g.Start()
 	<-done

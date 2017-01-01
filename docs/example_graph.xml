@@ -5,16 +5,35 @@ to perform node processing. There are three main sections:
 
 <macros> (optional) can be used to create new environment variables based on the args. Main utility would be if you have a composite variable from several args appearing in multiple places, you can create a single macro for that.
 
-<nodes> specify the nodes in the pipeline. There are three types of nodes:
-	<watch>
-	<exec>
-	<host> (actually a macro for an exec node with preconfigured properties).
+<nodes> specify the nodes in the pipeline. The available types of nodes are:
+	<watch>. Watch one or more folders, sending an event to the next node when a change occurs.
+		Watch has the following attributes:
+			"name" (optional, default "watch") The name of the node.
+		Watch supports the following elements:
+			<folder>. Path to a foldet to watch. Can have 1 or more.
 	
-	<watch> contains one or more <folder> elements that specify the path to a folder to watch.
+	<exec>. Run a console command.
+		Exec has the following attributes:
+			"name" (optional, default "exec") The name of the node. 
+			"cmd" (required) Name of the command to run.
+			"dir" (optional) The working directory. This is technically optional, but generally required in practice.
+			"args" (optional) Any command-line args to send to the command.
+			"interrupt" (optional, default false) When true, a running command is cancelled when new events are received.
+			"autorun" (optional, default false) When true, the command is automatically run when the graph starts
+			"rerun" (optional, default false) When true, the command is automatically rerun when it stops.
+		Exec supports the following elements:
+			<cmd> Specify one or more commands to send.
+		
+	<host>. A macro for exec, with "interrupt", "autorun", and "rerun" all set to true (and the name is set to "host" and not "exec"). Note that any of those values can be overridden by including the attributes.
 	
-	<exec>...
+There special elements that can be added to nodes.
+	<folder> Specify an absolute path to a single folder.
 	
-	<host> is a macro for exec, with "interrupt", "autorun", and "rerun" all set to true (and the name is set to "host" and not "exec"). Note that any of those values can be overridden by including the attributes.
+	<cmd> Send a message to another node.
+		Cmd has the following attributes:
+			"method" (required) The name of the message to send. Currently "stop" is supported, which stops another running exec.
+			"target" (required) The name of the node that will receive the message. A node name is by default its type name, unless the "name" attribute is set.
+			"reply" (optional, default false) If true, the sending node will wait until a reply is received before any further action.
 -->
 
 <!-- Example graph to perform gulp functionality. Users need to supply all args -->
