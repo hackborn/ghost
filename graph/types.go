@@ -158,6 +158,7 @@ func (g *Graph) Start() error {
 		n := &(g._nodes[i])
 		if n.node != nil {
 			n.node.Start(g, n.prepare)
+			n.prepare = nil
 		}
 	}
 

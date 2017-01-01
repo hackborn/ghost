@@ -35,6 +35,8 @@ type fromChan int
 const (
 	fromMerge fromChan = iota
 	fromControl
+	fromInput
+	fromStatus
 )
 
 const (
@@ -131,21 +133,18 @@ func (e *Exec) Start(s Start, idata interface{}) error {
 	waiter := s.GetDoneWaiter()
 	waiter.Add(1)
 	go func(owner Owner, done chan struct{}, waiter *sync.WaitGroup, data prepareDataExec, inputChan chan Msg) {
-		var process *exec.Cmd = nil
+		proc := process{e.Cmd, e.Args, e.Dir, nil}
+		handler := newHandleFromMain(owner, &proc, status, e)
 
 		defer waiter.Done()
 		defer fmt.Println("end exec func")
-		defer killExec(process)
+		defer proc.close()
 		defer e.CloseChannels()
 
 		fmt.Println("start exec func")
 
-		needs_run := false
-		in_stop := false
-		var stop_msg Msg
-
 		if e.Autorun {
-			process = e.runProcess(status)
+			proc.run(status)
 		}
 
 		for {
@@ -154,55 +153,19 @@ func (e *Exec) Start(s Start, idata interface{}) error {
 				return
 			case msg, more := <-data.mainControlChan:
 				if more {
-					cmd := CmdFromMsg(msg)
-					fmt.Println("exec", e.Id, "control msg", msg, "cmd", cmd)
-					if cmd != nil {
-						if cmd.Method == cmdStop {
-							fmt.Println("Got stop for", cmd)
-							if process == nil {
-								reply := Cmd{Method: cmdStopReply, TargetId: msg.SenderId}
-								rmsg := reply.AsMsg()
-								rmsg.SetInt(blockIdKey, msg.MustGetInt(blockIdKey))
-								owner.SendMsg(rmsg, msg.SenderId)
-							} else {
-								in_stop = true
-								stop_msg = msg
-								killExec(process)
-							}
-						}
-					}
+					handler.handleMsg(&msg, fromControl)
 				}
 			case msg, more := <-inputChan:
 				if more {
-					fmt.Println("exec msg", msg)
-					if process == nil {
-						process = e.runProcess(status)
-					} else {
-						needs_run = true
-					}
+					handler.handleMsg(&msg, fromInput)
 				}
 			case err, more := <-status:
 				if more {
-					fmt.Println("run err", err)
-					process = nil
-					if in_stop {
-						in_stop = false
-						reply := Cmd{Method: cmdStopReply, TargetId: stop_msg.SenderId}
-						rmsg := reply.AsMsg()
-						rmsg.SetInt(blockIdKey, stop_msg.MustGetInt(blockIdKey))
-						owner.SendMsg(rmsg, stop_msg.SenderId)
-					} else if needs_run {
-						needs_run = false
-						process = e.runProcess(status)
-					} else if err == nil {
-						// Process completed successfully
-						e.SendMsg(Msg{})
-					}
+					handler.handleErr(err, fromStatus)
 				} else {
 					// The channel closed for some unknown reason,
 					// that's an error but shouldn't shut down the graph.
-					killExec(process)
-					process = nil
+					proc.close()
 					fmt.Println("exec error: channel closed, cause unknown")
 				}
 			}
@@ -280,45 +243,99 @@ func (e *Exec) startCmds(s Start, data prepareDataExec, inputChan chan Msg) erro
 	return nil
 }
 
-func (e *Exec) runProcess(c chan error) *exec.Cmd {
-	proc := e.newCmd()
-	if proc == nil {
-		return nil
-	}
-	go func(proc *exec.Cmd) {
-		fmt.Println("*****run exec:", e.Cmd, "path", proc.Path, "dir", proc.Dir)
-		c <- proc.Run()
-		fmt.Println("*****exec finished")
-	}(proc)
-	return proc
+// handleFromMain handles messages received in the main func.
+// The primary purpose is to intercept the messages,
+// run my list of commands, then potentially wait for
+// the commands to finish before forwarding the message.
+//
+// Note that a side effect is that messages can get
+// lost, if I happen to receive a new one while waiting
+// to hear the response from my commands after a previous
+// message.
+type handleFromMain struct {
+	owner     Owner
+	proc      *process
+	status    chan error
+	needs_run bool
+	in_stop   bool
+	stop_msg  Msg
+	// Solely so I can send a msg down the pipe. Should be a cleaner way.
+	ex *Exec
 }
 
-func (e *Exec) newCmd() *exec.Cmd {
-	cmd := exec.Command(e.Cmd)
-	if cmd == nil {
-		fmt.Println("exec error: Couldn't create cmd")
-		return nil
-	}
-	cmd.Dir = e.Dir
-	if len(e.Args) > 0 {
-		cmd.Args = append(cmd.Args, e.Args)
-	}
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd
+func newHandleFromMain(owner Owner, proc *process, status chan error, ex *Exec) *handleFromMain {
+	return &handleFromMain{owner, proc, status, false, false, Msg{}, ex}
 }
 
-func killExec(cmd *exec.Cmd) {
-	fmt.Println("kill 1")
-	if cmd != nil && cmd.Process != nil {
-		fmt.Println("kill 2")
-		cmd.Process.Kill()
+func (h *handleFromMain) close() {
+	h.proc.close()
+}
+
+func (h *handleFromMain) handleMsg(msg *Msg, from fromChan) {
+	if msg == nil {
+		return
+	}
+	if from == fromControl {
+		h.handleFromControl(msg)
+	} else if from == fromInput {
+		h.handleFromInput(msg)
 	}
 }
 
-// -----------------------------------------------
-// handleFromCmds struct
-// Handle messages received from the command func.
+func (h *handleFromMain) handleFromControl(msg *Msg) {
+	cmd := CmdFromMsg(*msg)
+	fmt.Println("exec control msg", *msg, "cmd", cmd)
+	if cmd != nil {
+		if cmd.Method == cmdStop {
+			fmt.Println("Got stop for", cmd)
+			if !h.proc.isRunning() {
+				reply := Cmd{Method: cmdStopReply, TargetId: msg.SenderId}
+				rmsg := reply.AsMsg()
+				rmsg.SetInt(blockIdKey, msg.MustGetInt(blockIdKey))
+				h.owner.SendMsg(rmsg, msg.SenderId)
+			} else {
+				h.in_stop = true
+				h.stop_msg = *msg
+				h.proc.stop()
+			}
+		}
+	}
+}
+
+func (h *handleFromMain) handleFromInput(msg *Msg) {
+	fmt.Println("exec msg", msg)
+	if !h.proc.isRunning() {
+		h.proc.run(h.status)
+	} else {
+		h.needs_run = true
+	}
+}
+
+func (h *handleFromMain) handleErr(err error, from fromChan) {
+	if from == fromStatus {
+		h.handleFromStatus(err)
+	}
+}
+
+func (h *handleFromMain) handleFromStatus(err error) {
+	fmt.Println("run err", err)
+	h.proc.finished(err)
+	if h.in_stop {
+		h.in_stop = false
+		reply := Cmd{Method: cmdStopReply, TargetId: h.stop_msg.SenderId}
+		rmsg := reply.AsMsg()
+		rmsg.SetInt(blockIdKey, h.stop_msg.MustGetInt(blockIdKey))
+		h.owner.SendMsg(rmsg, h.stop_msg.SenderId)
+	} else if h.needs_run {
+		h.needs_run = false
+		h.proc.run(h.status)
+	} else if err == nil {
+		// Process completed successfully
+		h.ex.SendMsg(Msg{})
+	}
+}
+
+// handleFromCmds handles messages received in the command func.
 // The primary purpose is to intercept the messages,
 // run my list of commands, then potentially wait for
 // the commands to finish before forwarding the message.
@@ -398,9 +415,7 @@ func (h *handleFromCmds) send(msg *Msg) {
 	}
 }
 
-// -----------------------------------------------
-// prepareDataExec struct
-// Store data generate in the Prepare.
+// prepareDataExec store data generated in the Prepare.
 type prepareDataExec struct {
 	input Channels
 	// Forwarding channels to the main go function.
@@ -410,4 +425,61 @@ type prepareDataExec struct {
 	mainControlChan  chan Msg
 	cmdControlChan   chan Msg
 	cmdControlChanId Id
+}
+
+// process manages an exec cmd.
+type process struct {
+	cmdStr string
+	argStr string
+	dirStr string
+	cmd    *exec.Cmd
+}
+
+func (p *process) isRunning() bool {
+	return p.cmd != nil
+}
+
+func (p *process) stop() {
+	if p.cmd != nil && p.cmd.Process != nil {
+		p.cmd.Process.Kill()
+	}
+	p.cmd = nil
+}
+
+func (p *process) close() {
+	p.stop()
+}
+
+// finished() is set when the cmd status channel has reported completion.
+func (p *process) finished(err error) {
+	p.cmd = nil
+}
+
+func (p *process) run(c chan error) {
+	// XXX We're just ignoring if the current one is running.
+	// Should this try and kill it?
+	p.cmd = p.newCmd()
+	if p.cmd == nil {
+		return
+	}
+	go func(proc *exec.Cmd) {
+		fmt.Println("*****run exec:", p.cmdStr, "path", proc.Path, "dir", proc.Dir)
+		c <- proc.Run()
+		fmt.Println("*****exec finished")
+	}(p.cmd)
+}
+
+func (p *process) newCmd() *exec.Cmd {
+	cmd := exec.Command(p.cmdStr)
+	if cmd == nil {
+		fmt.Println("exec error: Couldn't create exec.Command")
+		return nil
+	}
+	cmd.Dir = p.dirStr
+	if len(p.argStr) > 0 {
+		cmd.Args = append(cmd.Args, p.argStr)
+	}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd
 }
