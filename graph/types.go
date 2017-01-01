@@ -58,7 +58,7 @@ type Graph struct {
 	_nodes []graphnode
 	// Control whether the nodes should be running. When this is closed,
 	// all funcs should stop.
-	done chan int
+	done chan struct{}
 	// Wait for all done channel to end when stopping the graph.
 	nodeWaiter sync.WaitGroup
 	// The collection of channels to my root nodes
@@ -100,7 +100,7 @@ func (g *Graph) NewControlChannel(id node.Id) (chan node.Msg, node.Id) {
 }
 
 // Start interface
-func (g *Graph) GetDoneChannel() chan int {
+func (g *Graph) GetDoneChannel() chan struct{} {
 	return g.done
 }
 
@@ -136,7 +136,7 @@ func (g *Graph) addInput(n node.Node, s node.Source) {
 func (g *Graph) Start() error {
 	g.Stop()
 
-	g.done = make(chan int)
+	g.done = make(chan struct{})
 	if g.done == nil {
 		return errors.New("Can't make done channel")
 	}

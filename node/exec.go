@@ -130,7 +130,7 @@ func (e *Exec) Start(s Start, idata interface{}) error {
 	done := s.GetDoneChannel()
 	waiter := s.GetDoneWaiter()
 	waiter.Add(1)
-	go func(owner Owner, done chan int, waiter *sync.WaitGroup, data prepareDataExec, inputChan chan Msg) {
+	go func(owner Owner, done chan struct{}, waiter *sync.WaitGroup, data prepareDataExec, inputChan chan Msg) {
 		var process *exec.Cmd = nil
 
 		defer waiter.Done()
@@ -150,10 +150,8 @@ func (e *Exec) Start(s Start, idata interface{}) error {
 
 		for {
 			select {
-			case _, more := <-done:
-				if !more {
-					return
-				}
+			case <-done:
+				return
 			case msg, more := <-data.mainControlChan:
 				if more {
 					cmd := CmdFromMsg(msg)
@@ -225,7 +223,7 @@ func (e *Exec) startMerge(s Start, data prepareDataExec) error {
 	waiter := s.GetDoneWaiter()
 
 	waiter.Add(1)
-	go func(done chan int, waiter *sync.WaitGroup, timer *time.Timer, data prepareDataExec) {
+	go func(done chan struct{}, waiter *sync.WaitGroup, timer *time.Timer, data prepareDataExec) {
 		defer waiter.Done()
 		defer close(data.mergeChan)
 
@@ -238,10 +236,8 @@ func (e *Exec) startMerge(s Start, data prepareDataExec) error {
 		// still receiving events.
 		for {
 			select {
-			case _, more := <-done:
-				if !more {
-					return
-				}
+			case <-done:
+				return
 			case msg, more := <-data.input.Out[0]:
 				if more {
 					last = msg
@@ -260,7 +256,7 @@ func (e *Exec) startCmds(s Start, data prepareDataExec, inputChan chan Msg) erro
 	waiter := s.GetDoneWaiter()
 
 	waiter.Add(1)
-	go func(done chan int, waiter *sync.WaitGroup, owner Owner, data prepareDataExec, inputChan chan Msg) {
+	go func(done chan struct{}, waiter *sync.WaitGroup, owner Owner, data prepareDataExec, inputChan chan Msg) {
 		defer waiter.Done()
 		defer close(data.cmdChan)
 
@@ -268,10 +264,8 @@ func (e *Exec) startCmds(s Start, data prepareDataExec, inputChan chan Msg) erro
 
 		for {
 			select {
-			case _, more := <-done:
-				if !more {
-					return
-				}
+			case <-done:
+				return
 			case msg, more := <-inputChan:
 				if more {
 					handler.handle(&msg, fromMerge)

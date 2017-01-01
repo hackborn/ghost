@@ -77,7 +77,7 @@ func (w *Watch) Start(s Start, idata interface{}) error {
 	done := s.GetDoneChannel()
 	waiter := s.GetDoneWaiter()
 	waiter.Add(1)
-	go func(done chan int, waiter *sync.WaitGroup, data prepareDataWatch) {
+	go func(done chan struct{}, waiter *sync.WaitGroup, data prepareDataWatch) {
 		defer waiter.Done()
 		defer fmt.Println("end watch func")
 		defer w.CloseChannels()
@@ -87,10 +87,8 @@ func (w *Watch) Start(s Start, idata interface{}) error {
 
 		for {
 			select {
-			case _, more := <-done:
-				if !more {
-					return
-				}
+			case <-done:
+				return
 			case _, imore := <-data.input.Out[0]:
 				if !imore {
 					return
