@@ -18,8 +18,11 @@
 			<folder>${watch}</folder>
 		</watch>
 		<exec cmd="go" args="build" dir="${build_folder}" interrupt="false" rerun="false">
+			<log>************ build ${build_folder}</log>
 			<cmd method="stop" target="host" reply="true" />
 		</exec>
-		<host cmd="${build_folder}\${run}" dir="${build_folder}" />
+		<host cmd="${build_folder}\${run}" dir="${build_folder}">
+			<log>************ run ${run}</log>
+		</host>
 	</nodes>
 </graph>

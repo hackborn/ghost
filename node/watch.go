@@ -66,7 +66,7 @@ func (w *Watch) Start(s Start, idata interface{}) error {
 	if len(data.input.Out) != 1 {
 		return errors.New("node.Watch no inputs")
 	}
-//	fmt.Println("Start watch", w, "ins", len(data.input.Out), "outs", len(w.Out))
+	//	fmt.Println("Start watch", w, "ins", len(data.input.Out), "outs", len(w.Out))
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {

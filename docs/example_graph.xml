@@ -23,17 +23,21 @@ to perform node processing. There are three main sections:
 			"rerun" (optional, default false) When true, the command is automatically rerun when it stops.
 		Exec supports the following elements:
 			<cmd> Specify one or more commands to send.
+			<log> Print text prior to running the command.
 		
 	<host>. A macro for exec, with "interrupt", "autorun", and "rerun" all set to true (and the name is set to "host" and not "exec"). Note that any of those values can be overridden by including the attributes.
 	
-There special elements that can be added to nodes.
-	<folder> Specify an absolute path to a single folder.
-	
+There are special elements that can be added to nodes.	
 	<cmd> Send a message to another node.
 		Cmd has the following attributes:
 			"method" (required) The name of the message to send. Currently "stop" is supported, which stops another running exec.
 			"target" (required) The name of the node that will receive the message. A node name is by default its type name, unless the "name" attribute is set.
 			"reply" (optional, default false) If true, the sending node will wait until a reply is received before any further action.
+			
+	<folder> Specify an absolute path to a single folder.
+
+	<log> Print text to the console.
+
 -->
 
 <!-- Example graph to perform gulp functionality. Users need to supply all args -->

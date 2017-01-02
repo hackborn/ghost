@@ -1,9 +1,5 @@
 package node
 
-import (
-	"fmt"
-)
-
 type fromChan int
 
 const (
@@ -58,10 +54,8 @@ func (h *handleFromMain) handleMsg(msg *Msg, from fromChan) {
 
 func (h *handleFromMain) handleFromControl(msg *Msg) {
 	cmd := CmdFromMsg(*msg)
-	fmt.Println("exec control msg", *msg, "cmd", cmd)
 	if cmd != nil {
 		if cmd.Method == cmdStop {
-			fmt.Println("Got stop for", cmd)
 			if !h.proc.isRunning() {
 				reply := Cmd{Method: cmdStopReply, TargetId: msg.SenderId}
 				rmsg := reply.AsMsg()
@@ -77,9 +71,9 @@ func (h *handleFromMain) handleFromControl(msg *Msg) {
 }
 
 func (h *handleFromMain) handleFromInput(msg *Msg) {
-	fmt.Println("exec msg", msg)
+	debug("exec msg %v", msg)
 	if !h.proc.isRunning() {
-		h.proc.run(h.status)
+		h.proc.run(h.status, h.ex.LogList)
 	} else {
 		h.needs_run = true
 	}
@@ -92,7 +86,6 @@ func (h *handleFromMain) handleFini(fini execfini, from fromChan) {
 }
 
 func (h *handleFromMain) handleFromStatus(fini execfini) {
-	fmt.Println("run fini", fini)
 	if !h.proc.finished(fini) {
 		return
 	}
@@ -105,7 +98,7 @@ func (h *handleFromMain) handleFromStatus(fini execfini) {
 		h.owner.SendMsg(rmsg, h.stop_msg.SenderId)
 	} else if h.needs_run {
 		h.needs_run = false
-		needs_run = true;
+		needs_run = true
 	} else if fini.err == nil {
 		// Process completed successfully
 		h.ex.SendMsg(Msg{})
@@ -120,7 +113,7 @@ func (h *handleFromMain) handleFromStatus(fini execfini) {
 	}
 
 	if needs_run {
-		h.proc.run(h.status)
+		h.proc.run(h.status, h.ex.LogList)
 	}
 }
 
@@ -172,14 +165,12 @@ func (h *handleFromCmds) handleFromMerge(msg *Msg) {
 		m.SenderId = h.controlId
 		m.SetInt(blockIdKey, h.block_id)
 		err := h.owner.SendMsg(m, v.TargetId)
-		fmt.Println("sent stop err", err, "cmd", v, "controlId", h.controlId)
 		if err == nil && v.Reply {
 			h.block_size++
 		}
 	}
 	// If I'm not waiting to hear back from anyone then just send the message
 	if h.block_size <= 0 {
-		fmt.Println("Send immediate")
 		h.send(msg)
 	}
 }
@@ -190,7 +181,6 @@ func (h *handleFromCmds) handleFromControl(msg *Msg) {
 		if cmd.Method == cmdStopReply && h.block_id == msg.MustGetInt(blockIdKey) {
 			h.block_size--
 			if h.block_size == 0 && h.block_has_msg {
-				fmt.Println("Send delayed")
 				h.send(&h.block_msg)
 			}
 		}

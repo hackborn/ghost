@@ -26,7 +26,11 @@ type Cmd struct {
 }
 
 type Cmds struct {
-	CmdList []Cmd `xml:",any"`
+	CmdList []Cmd `xml:"cmd"`
+}
+
+type Logt struct {
+	Text string `xml:",chardata"`
 }
 
 type Prepare interface {
@@ -70,24 +74,23 @@ type GetId interface {
 	GetId(name string) Id
 }
 
-// A node owner. Provide an API for various functions and a channel
-// to receive control events.
+// Owner provides Nodes access to graph functions.
 type Owner interface {
 	// Send a command from a source.
 	SendMsg(msg Msg, to Id) error
 }
 
-// Bundle behaviour for managing Node input/output channels.
+// Channels bundles behaviour for managing Node input/output channels.
 type Channels struct {
 	Out []chan Msg
 }
 
-// A generic interface for modifying a string.
+// ChangeString is a generic interface for modifying a string.
 type ChangeString interface {
 	ChangeString(s string) string
 }
 
-// A single node in the processing graph.
+// Node is a single stage in the processing graph.
 type Node interface {
 	GetId() Id
 	GetName() string
@@ -95,10 +98,11 @@ type Node interface {
 	ApplyArgs(cs ChangeString)
 	NewChannel() chan Msg
 
-	// Running the node happens in two stages: First Prepare is
-	// called, where the node should construct all data it will
+	// Running the Node happens in two stages: First Prepare is
+	// called, where the Node should construct all data it will
 	// need for the run, placing that in the returned interface.
-	// Next Start is called, where the node is supplied the interface.
+	// Next Start is called, where the Node is supplied the interface.
+	// All setup happens in Prepare; ideally, start can not fail.
 	PrepareToStart(p Prepare, inputs []Source) (interface{}, error)
 	Start(s Start, data interface{}) error
 

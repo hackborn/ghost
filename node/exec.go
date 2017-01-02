@@ -13,7 +13,7 @@ import (
 // the error value returned from Run() with a counter to identify the run.
 type execfini struct {
 	runId int
-	err error
+	err   error
 }
 
 // Exec runs a command. The command runs in a separate gofunc, spawned from
@@ -29,6 +29,7 @@ type Exec struct {
 	Interrupt bool   `xml:"interrupt,attr"`
 	Autorun   bool   `xml:"autorun,attr"`
 	Rerun     bool   `xml:"rerun,attr"`
+	LogList      []Logt `xml:"log"`
 	//	input     Channels
 	Channels // Output
 	Cmds
@@ -50,6 +51,10 @@ func (e *Exec) ApplyArgs(cs ChangeString) {
 	e.Cmd = cs.ChangeString(e.Cmd)
 	e.Args = cs.ChangeString(e.Args)
 	e.Dir = cs.ChangeString(e.Dir)
+	for i :=0; i < len(e.LogList); i++ {
+		v := &e.LogList[i]
+		v.Text = cs.ChangeString(v.Text)
+	}
 }
 
 func (e *Exec) PrepareToStart(p Prepare, inputs []Source) (interface{}, error) {
@@ -104,7 +109,7 @@ func (e *Exec) Start(s Start, idata interface{}) error {
 	if len(data.input.Out) != 1 {
 		return errors.New("node.Exec no inputs")
 	}
-//	fmt.Println("Start exec", e, "ins", len(data.input.Out), "outs", len(e.Out))
+	//	fmt.Println("Start exec", e, "ins", len(data.input.Out), "outs", len(e.Out))
 
 	inputChan := data.mergeChan
 	err := e.startMerge(s, data)
@@ -135,7 +140,7 @@ func (e *Exec) Start(s Start, idata interface{}) error {
 		debug("start exec main %v name=%v", e.Id, e.Name)
 
 		if e.Autorun {
-			proc.run(data.mainFiniChan)
+			proc.run(data.mainFiniChan, e.LogList)
 		}
 
 		for {
@@ -259,9 +264,9 @@ type process struct {
 	cmdStr string
 	argStr string
 	dirStr string
-	// The ID for the current run 
+	// The ID for the current run
 	runId int
-	cmd    *exec.Cmd
+	cmd   *exec.Cmd
 }
 
 func (p *process) isRunning() bool {
@@ -291,7 +296,7 @@ func (p *process) finished(fini execfini) bool {
 	return true
 }
 
-func (p *process) run(c chan execfini) {
+func (p *process) run(c chan execfini, logs []Logt) {
 	// XXX We're just ignoring if the current one is running.
 	// Should this try and kill it?
 	p.cmd = p.newCmd()
@@ -299,11 +304,12 @@ func (p *process) run(c chan execfini) {
 		return
 	}
 	p.runId++
-	go func(runId int, proc *exec.Cmd, c chan execfini) {
-		fmt.Println("*****run exec:", p.cmdStr, "path", proc.Path, "dir", proc.Dir)
+	go func(runId int, proc *exec.Cmd, c chan execfini, logs []Logt) {
+		for _, v := range logs {
+			fmt.Println(v.Text)
+		}
 		c <- execfini{runId, proc.Run()}
-		fmt.Println("*****exec finished")
-	}(p.runId, p.cmd, c)
+	}(p.runId, p.cmd, c, logs)
 }
 
 func (p *process) newCmd() *exec.Cmd {
