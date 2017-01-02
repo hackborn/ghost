@@ -37,7 +37,7 @@ func main() {
 func loadGraph() (*graph.Graph, error) {
 	// 1. Load graph based on the command line
 	// Provide defaults for now
-	graph_name := "gulp"
+	graph_name := "test"
 	if len(os.Args) > 1 {
 		graph_name = os.Args[1]
 	}
