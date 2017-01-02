@@ -34,3 +34,6 @@ At heart it's a simple pipeline processor, where the pipeline is composed of any
 * Watcher has no way to disallow folders, it currently attempts to watch every folder under the root. The number of folders to watched is managed by having a filter, but if you don't include the filter, and have a large directory structure of files you don't care about, you end up with a large number of watched folders.
 * The exec command will not run if it receives continuous messages from a watch. This needs to be improved a little so it always runs after a set time, even if there are more changes.
 * App does not properly shut down when hitting the close button on a windows command prompt. Not sure if this impacts anything -- go seems to be cleaning up all the important parts.
+
+## acknowledgements
+Much thanks to the fsnotify project -- https://github.com/fsnotify/fsnotify
