@@ -94,6 +94,7 @@ func (h *handleFromMain) handleFini(fini execfini, from fromChan) {
 func (h *handleFromMain) handleFromStatus(fini execfini) {
 	fmt.Println("run fini", fini)
 	h.proc.finished(fini)
+	needs_run := false
 	if h.in_stop {
 		h.in_stop = false
 		reply := Cmd{Method: cmdStopReply, TargetId: h.stop_msg.SenderId}
@@ -102,10 +103,22 @@ func (h *handleFromMain) handleFromStatus(fini execfini) {
 		h.owner.SendMsg(rmsg, h.stop_msg.SenderId)
 	} else if h.needs_run {
 		h.needs_run = false
-		h.proc.run(h.status)
+		needs_run = true;
 	} else if fini.err == nil {
 		// Process completed successfully
 		h.ex.SendMsg(Msg{})
+		if h.ex.Rerun {
+			needs_run = true
+		}
+	} else {
+		// Some sort of error -- possibly a crash.
+		if h.ex.Rerun {
+			needs_run = true
+		}
+	}
+
+	if needs_run {
+		h.proc.run(h.status)
 	}
 }
 
