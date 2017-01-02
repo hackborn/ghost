@@ -4,16 +4,18 @@ import (
 	"errors"
 	"fmt"
 	"github.com/fsnotify/fsnotify"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 )
 
 type Folder struct {
 	Path string `xml:",chardata"`
+	Filter string   `xml:"filter,attr"`
 }
 
-// -----------------------------------------------
-// Watch struct
-// Watch a folder path, emitting messages when it changes.
+// Watch receives notification when a folder path changes.
 type Watch struct {
 	Id       Id
 	Name     string   `xml:"name,attr"`
@@ -54,7 +56,13 @@ func (w *Watch) PrepareToStart(p Prepare, inputs []Source) (interface{}, error) 
 	for _, i := range inputs {
 		data.input.Add(i.NewChannel())
 	}
-
+	for _, v := range w.Folders {
+		w, err := newWatchList(v.Path, v.Filter)
+		if err != nil {
+			return nil, err
+		}
+		data.watched = append(data.watched, w)
+	}
 	return data, nil
 }
 
@@ -105,17 +113,64 @@ func (w *Watch) Start(s Start, idata interface{}) error {
 		}
 	}(done, waiter, data)
 
-	err = watcher.Add("C:/work/dev/go/src/github.com/hackborn/ghost")
-	if err != nil {
+	has_watch_err := false
+	for _, l := range data.watched {
+		for k, v := range l.items {
+			if v {
+				err = watcher.Add(k)
+				debug("watched added path", k)
+				if err != nil {
+					has_watch_err = true
+				}
+			}
+		}
+	}
+	if has_watch_err {
 		return errors.New("Watcher can't add path")
 	}
 
 	return nil
 }
 
-// -----------------------------------------------
-// prepareDataWatch struct
-// Store data generate in the Prepare.
+// prepareDataWatch stores data generated in the Prepare.
 type prepareDataWatch struct {
-	input Channels
+	input   Channels
+	watched []watch_list
+}
+
+// watch_list stores a list of folders, mapped to a value of
+// whether or not the folder contains a watched file.
+type watch_list struct {
+	root  string
+	items map[string]bool
+}
+
+func newWatchList(root string, _filter string) (watch_list, error) {
+	filter := strings.ToLower(_filter)
+	ans := watch_list{root, make(map[string]bool)}
+
+	visit := func(file string, info os.FileInfo, err error) error {
+		if info.IsDir() && len(filter) < 1 {
+			ans.items[file] = true
+		} else if !info.IsDir() && len(filter) > 0 {
+			path_lc := strings.ToLower(file)
+			if strings.Contains(path_lc, filter) {
+				parent := filepath.Dir(file)
+				ans.items[parent] = true
+			}
+		}
+		return nil
+	}
+
+	err := filepath.Walk(root, visit)
+	if err != nil {
+		return watch_list{}, err
+	}
+	return ans, nil
+}
+
+func (wi *watch_list) add(path string, watched bool) {
+	// A watched of true takes precedence over false.
+	// XXX Unimplemented -- currently folders are only added
+	// if we're watching them
 }

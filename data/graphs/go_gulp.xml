@@ -15,7 +15,7 @@
 	
 	<nodes>
 		<watch>
-			<folder>${watch}</folder>
+			<folder filter=".go">${watch}</folder>
 		</watch>
 		<exec cmd="go" args="build" dir="${build_folder}">
 			<log>************ build ${build_folder}</log>
