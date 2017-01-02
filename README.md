@@ -18,6 +18,8 @@ Gulp mode watches a folder. When a change is detected, it builds the application
 
 example: *ghost go_gulp -watch="C:\go\github.com\hackborn\ghost" -run="ghost.exe"*
 
+(don't try this exact example, it will just recursively launch ghost)
+
 3. **format gulp**
 
 Format gulp works like gulp mode, but if formats the Go code before building it.
