@@ -10,9 +10,9 @@ import (
 )
 
 func main() {
-	g, gerr := loadGraph()
-	if gerr != nil {
-		fmt.Println("Error loading graph:", gerr)
+	g, err := loadGraph()
+	if err != nil {
+		fmt.Println("Error loading graph:", err)
 		return
 	}
 	if g == nil {

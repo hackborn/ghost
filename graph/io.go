@@ -63,14 +63,20 @@ func (b *builder) GetId(name string) node.Id {
 
 // Find the graph with the given name and load it.
 func Load(n string, la LoadArgs) (*Graph, error) {
-	n = strings.ToLower(n)
+	// Directly load if this is a path to an existing file.
+	if _, err := os.Stat(n); err == nil {
+		return LoadFile(n, la)
+	}
+
+	// For now, look in our local data folder for a valid
+	// file matching the name.
 	p, err := osext.ExecutableFolder()
 	if err != nil {
 		return nil, err
 	}
-	// Search every location with graphs for the requested.
 	p = path.Join(p, "data", "graphs")
-	return loadFromPath(n, p, la)
+	// Search every location with graphs for the requested.
+	return loadFromPath(strings.ToLower(n), p, la)
 }
 
 // Construct a graph by loading from a filename.

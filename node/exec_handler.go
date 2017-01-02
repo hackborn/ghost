@@ -29,7 +29,7 @@ const (
 type handleFromMain struct {
 	owner     Owner
 	proc      *process
-	status    chan error
+	status    chan execfini
 	needs_run bool
 	in_stop   bool
 	stop_msg  Msg
@@ -37,7 +37,7 @@ type handleFromMain struct {
 	ex *Exec
 }
 
-func newHandleFromMain(owner Owner, proc *process, status chan error, ex *Exec) *handleFromMain {
+func newHandleFromMain(owner Owner, proc *process, status chan execfini, ex *Exec) *handleFromMain {
 	return &handleFromMain{owner, proc, status, false, false, Msg{}, ex}
 }
 
@@ -85,15 +85,15 @@ func (h *handleFromMain) handleFromInput(msg *Msg) {
 	}
 }
 
-func (h *handleFromMain) handleErr(err error, from fromChan) {
+func (h *handleFromMain) handleFini(fini execfini, from fromChan) {
 	if from == fromStatus {
-		h.handleFromStatus(err)
+		h.handleFromStatus(fini)
 	}
 }
 
-func (h *handleFromMain) handleFromStatus(err error) {
-	fmt.Println("run err", err)
-	h.proc.finished(err)
+func (h *handleFromMain) handleFromStatus(fini execfini) {
+	fmt.Println("run fini", fini)
+	h.proc.finished(fini)
 	if h.in_stop {
 		h.in_stop = false
 		reply := Cmd{Method: cmdStopReply, TargetId: h.stop_msg.SenderId}
@@ -103,7 +103,7 @@ func (h *handleFromMain) handleFromStatus(err error) {
 	} else if h.needs_run {
 		h.needs_run = false
 		h.proc.run(h.status)
-	} else if err == nil {
+	} else if fini.err == nil {
 		// Process completed successfully
 		h.ex.SendMsg(Msg{})
 	}

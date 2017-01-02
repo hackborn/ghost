@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+// execfini is the result of a finished exec.Cmd.Run(). It bundles
+// the error value returned from Run() with a counter to identify the run.
+type execfini struct {
+	runId int
+	err error
+}
+
 // Exec runs a command. The command runs in a separate gofunc, spawned from
 // the main running gofunc. The command func has ownership
 // over the command, with the main fun being granted access
@@ -63,9 +70,9 @@ func (e *Exec) PrepareToStart(p Prepare, inputs []Source) (interface{}, error) {
 	if data.mainControlChan == nil {
 		return nil, errors.New("node.Exec can't make control channel")
 	}
-	data.mainStatusChan = make(chan error)
-	if data.mainStatusChan == nil {
-		return nil, errors.New("node.Exec can't make status channel")
+	data.mainFiniChan = make(chan execfini)
+	if data.mainFiniChan == nil {
+		return nil, errors.New("node.Exec can't make fini channel")
 	}
 	data.mergeChan = make(chan Msg)
 	if data.mergeChan == nil {
@@ -117,8 +124,8 @@ func (e *Exec) Start(s Start, idata interface{}) error {
 	waiter := s.GetDoneWaiter()
 	waiter.Add(1)
 	go func(owner Owner, done chan struct{}, waiter *sync.WaitGroup, data prepareDataExec, inputChan chan Msg) {
-		proc := process{e.Cmd, e.Args, e.Dir, nil}
-		handler := newHandleFromMain(owner, &proc, data.mainStatusChan, e)
+		proc := process{e.Cmd, e.Args, e.Dir, 0, nil}
+		handler := newHandleFromMain(owner, &proc, data.mainFiniChan, e)
 
 		defer waiter.Done()
 		defer debug("end exec main %v", e.Id)
@@ -128,7 +135,7 @@ func (e *Exec) Start(s Start, idata interface{}) error {
 		debug("start exec main %v name=%v", e.Id, e.Name)
 
 		if e.Autorun {
-			proc.run(data.mainStatusChan)
+			proc.run(data.mainFiniChan)
 		}
 
 		for {
@@ -143,9 +150,9 @@ func (e *Exec) Start(s Start, idata interface{}) error {
 				if more {
 					handler.handleMsg(&msg, fromInput)
 				}
-			case err, more := <-data.mainStatusChan:
+			case fini, more := <-data.mainFiniChan:
 				if more {
-					handler.handleErr(err, fromStatus)
+					handler.handleFini(fini, fromStatus)
 				} else {
 					// The channel closed for some unknown reason,
 					// that's an error but shouldn't shut down the graph.
@@ -244,7 +251,7 @@ type prepareDataExec struct {
 	cmdControlChanId Id
 	// The cmd runs in a separate gofunc. This channel communicates back to the main func,
 	// returning the result of the run (specifically, exec.Cmd.Run()).
-	mainStatusChan chan error
+	mainFiniChan chan execfini
 }
 
 // process manages an exec cmd.
@@ -252,6 +259,8 @@ type process struct {
 	cmdStr string
 	argStr string
 	dirStr string
+	// The ID for the current run 
+	runId int
 	cmd    *exec.Cmd
 }
 
@@ -271,22 +280,28 @@ func (p *process) close() {
 }
 
 // finished() is set when the cmd status channel has reported completion.
-func (p *process) finished(err error) {
+func (p *process) finished(fini execfini) {
+	// Discard if I'm from a previous run
+	if fini.runId != p.runId {
+		debug("exec.process.finished() discard previous run (current=%v, received=%v)", p.runId, fini.runId)
+		return
+	}
 	p.cmd = nil
 }
 
-func (p *process) run(c chan error) {
+func (p *process) run(c chan execfini) {
 	// XXX We're just ignoring if the current one is running.
 	// Should this try and kill it?
 	p.cmd = p.newCmd()
 	if p.cmd == nil {
 		return
 	}
-	go func(proc *exec.Cmd) {
+	p.runId++
+	go func(runId int, proc *exec.Cmd, c chan execfini) {
 		fmt.Println("*****run exec:", p.cmdStr, "path", proc.Path, "dir", proc.Dir)
-		c <- proc.Run()
+		c <- execfini{runId, proc.Run()}
 		fmt.Println("*****exec finished")
-	}(p.cmd)
+	}(p.runId, p.cmd, c)
 }
 
 func (p *process) newCmd() *exec.Cmd {
