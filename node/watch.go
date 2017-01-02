@@ -66,7 +66,7 @@ func (w *Watch) Start(s Start, idata interface{}) error {
 	if len(data.input.Out) != 1 {
 		return errors.New("node.Watch no inputs")
 	}
-	fmt.Println("Start watch", w, "ins", len(data.input.Out), "outs", len(w.Out))
+//	fmt.Println("Start watch", w, "ins", len(data.input.Out), "outs", len(w.Out))
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -79,11 +79,11 @@ func (w *Watch) Start(s Start, idata interface{}) error {
 	waiter.Add(1)
 	go func(done chan struct{}, waiter *sync.WaitGroup, data prepareDataWatch) {
 		defer waiter.Done()
-		defer fmt.Println("end watch func")
+		defer debug("end watch %v", w.Id)
 		defer w.CloseChannels()
 		defer watcher.Close()
 
-		fmt.Println("start watch func")
+		debug("start watch %v name=%v", w.Id, w.Name)
 
 		for {
 			select {
