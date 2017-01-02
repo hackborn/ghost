@@ -20,6 +20,10 @@ example: *ghost go_gulp -watch="C:\go\github.com\hackborn\ghost" -run="ghost.exe
 
 (don't try this exact example, it will just recursively launch ghost)
 
+or example for a project where the main.go is in a subfolder called *main*:
+
+*ghost go_gulp -watch="C:\go\github.com\hackborn\server" -build="main" -run="server.exe"*
+
 3. **format gulp**
 
 Format gulp works like gulp mode, but if formats the Go code before building it.
