@@ -11,8 +11,8 @@ import (
 )
 
 type Folder struct {
-	Path string `xml:",chardata"`
-	Filter string   `xml:"filter,attr"`
+	Path   string `xml:",chardata"`
+	Filter string `xml:"filter,attr"`
 }
 
 // Watch receives notification when a folder path changes.
