@@ -1,0 +1,11 @@
+<graph>
+	<!-- Command line args that can be passed into the app when this graph is selected.
+	Args names can't conflict with any names in macros. -->
+	<args>
+		<file usage="Name of file to run. The file will be kept running until ghost is quit."></file>
+	</args>
+	
+	<nodes>
+		<host cmd="${file}" />
+	</nodes>
+</graph>

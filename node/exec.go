@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 )
@@ -29,7 +30,7 @@ type Exec struct {
 	Interrupt bool   `xml:"interrupt,attr"`
 	Autorun   bool   `xml:"autorun,attr"`
 	Rerun     bool   `xml:"rerun,attr"`
-	LogList      []Logt `xml:"log"`
+	LogList   []Logt `xml:"log"`
 	//	input     Channels
 	Channels // Output
 	Cmds
@@ -51,7 +52,7 @@ func (e *Exec) ApplyArgs(cs ChangeString) {
 	e.Cmd = cs.ChangeString(e.Cmd)
 	e.Args = cs.ChangeString(e.Args)
 	e.Dir = cs.ChangeString(e.Dir)
-	for i :=0; i < len(e.LogList); i++ {
+	for i := 0; i < len(e.LogList); i++ {
 		v := &e.LogList[i]
 		v.Text = cs.ChangeString(v.Text)
 	}
@@ -190,7 +191,7 @@ func (e *Exec) startMerge(s Start, data prepareDataExec) error {
 		debug("start exec merge %v", e.Id)
 		var last Msg
 
-		// An extremely simply handling of the timer right now --
+		// An extremely simple handling of the timer right now --
 		// it will get retriggered as long as I receive new events,
 		// only firing once that stops. Need to improve this so
 		// it will always fire after a small delay, even if it's
@@ -320,9 +321,38 @@ func (p *process) newCmd() *exec.Cmd {
 	}
 	cmd.Dir = p.dirStr
 	if len(p.argStr) > 0 {
-		cmd.Args = append(cmd.Args, p.argStr)
+		for _, v := range formatArgs(p.argStr) {
+			cmd.Args = append(cmd.Args, v)
+		}
 	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd
+}
+
+// formatArgs is I hope a hack: The user specifies args
+// as a single string, with spaces. However the cmd.Run() chokes
+// on this; it needs each arg as a separate entry in a slice. So
+// take a quick stab at something that should get us there: The
+// source list is parsed, separating by space, unless we're in quotes
+func formatArgs(_in string) []string {
+	in := strings.TrimSpace(_in)
+	out := []string{}
+	in_dquote := false
+	start := 0
+	for i := 0; i < len(in); i++ {
+		c := string(in[i])
+		if c == " " && !in_dquote {
+			if i-start > 0 {
+				out = append(out, in[start:i])
+			}
+			start = i + 1
+		} else if c == "\"" {
+			in_dquote = !in_dquote
+		}
+	}
+	if len(in) > start {
+		out = append(out, in[start:len(in)])
+	}
+	return out
 }
