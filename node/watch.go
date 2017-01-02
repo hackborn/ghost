@@ -77,7 +77,7 @@ func (w *Watch) Start(s Start, idata interface{}) error {
 	done := s.GetDoneChannel()
 	waiter := s.GetDoneWaiter()
 	waiter.Add(1)
-	go func(done chan struct{}, waiter *sync.WaitGroup, data prepareDataWatch) {
+	go func(done <-chan struct{}, waiter *sync.WaitGroup, data prepareDataWatch) {
 		defer waiter.Done()
 		defer debug("end watch %v", w.Id)
 		defer w.CloseChannels()

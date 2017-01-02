@@ -48,7 +48,7 @@ type Start interface {
 	// node should stop running. Note that this implies a new go func is
 	// being created, which should always be paired with adding to the
 	// Start.GetDoneWaiter.
-	GetDoneChannel() chan struct{}
+	GetDoneChannel() <-chan struct{}
 	GetDoneWaiter() *sync.WaitGroup
 	// Get access to a message-sending object.
 	GetOwner() Owner

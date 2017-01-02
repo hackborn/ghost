@@ -100,7 +100,7 @@ func (g *Graph) NewControlChannel(id node.Id) (chan node.Msg, node.Id) {
 }
 
 // Start interface
-func (g *Graph) GetDoneChannel() chan struct{} {
+func (g *Graph) GetDoneChannel() <-chan struct{} {
 	return g.done
 }
 
