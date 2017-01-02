@@ -280,13 +280,15 @@ func (p *process) close() {
 }
 
 // finished() is set when the cmd status channel has reported completion.
-func (p *process) finished(fini execfini) {
+// Answer true if I handled this fini, false if I discarded it.
+func (p *process) finished(fini execfini) bool {
 	// Discard if I'm from a previous run
 	if fini.runId != p.runId {
 		debug("exec.process.finished() discard previous run (current=%v, received=%v)", p.runId, fini.runId)
-		return
+		return false
 	}
 	p.cmd = nil
+	return true
 }
 
 func (p *process) run(c chan execfini) {

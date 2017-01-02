@@ -93,7 +93,9 @@ func (h *handleFromMain) handleFini(fini execfini, from fromChan) {
 
 func (h *handleFromMain) handleFromStatus(fini execfini) {
 	fmt.Println("run fini", fini)
-	h.proc.finished(fini)
+	if !h.proc.finished(fini) {
+		return
+	}
 	needs_run := false
 	if h.in_stop {
 		h.in_stop = false
