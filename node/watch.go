@@ -104,8 +104,10 @@ func (w *Watch) Start(s Start, idata interface{}) error {
 			case event := <-watcher.Events:
 				//				fmt.Println("event:", event)
 				if event.Op&fsnotify.Write == fsnotify.Write {
-					//					fmt.Println("modified file:", event.Name)
-					w.SendMsg(Msg{})
+					// fmt.Println("modified file:", event.Name)
+					if data.acceptChange(event.Name) {
+						w.SendMsg(Msg{})
+					}
 				}
 			case err := <-watcher.Errors:
 				fmt.Println("error:", err)
@@ -136,6 +138,12 @@ func (w *Watch) Start(s Start, idata interface{}) error {
 type prepareDataWatch struct {
 	input   Channels
 	watched []watch_list
+}
+
+func (d *prepareDataWatch) acceptChange(path string) bool {
+	// Quick hack: Omit .exe files to prevent recursion.
+	ext := filepath.Ext(strings.ToLower(path))
+	return ext != ".exe"
 }
 
 // watch_list stores a list of folders, mapped to a value of
