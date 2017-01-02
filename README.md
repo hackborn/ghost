@@ -10,25 +10,25 @@ From a command prompt, navigate to the ghost directory and launch the app with a
 
 Host mode launches an application and keeps it running.
 
-example (on windows): *ghost host -file=notepad.exe*
+example (on windows): *ghost.exe host -file=notepad.exe*
 
 2. **gulp**
 
 Gulp mode watches a folder. When a change is detected, it builds the application and then launches it in host mode. The supplied configuration file is used explicitly to gulp Go applications.
 
-example: *ghost go_gulp -watch="C:\go\github.com\hackborn\ghost" -run="ghost.exe"*
+example: *ghost.exe go_gulp -watch="C:\go\github.com\hackborn\ghost" -run="ghost.exe"*
 
 (don't try this exact example, it will just recursively launch ghost)
 
 or example for a project where the main.go is in a subfolder called *main*:
 
-*ghost go_gulp -watch="C:\go\github.com\hackborn\server" -build="main" -run="server.exe"*
+*ghost.exe go_gulp -watch="C:\go\github.com\hackborn\server" -build="main" -run="server.exe"*
 
 3. **format gulp**
 
 Format gulp works like gulp mode, but if formats the Go code before building it.
 
-example: *ghost go_fmt_gulp -watch="C:\go\github.com\hackborn\ghost" -run="ghost.exe"*
+example: *ghost.exe go_fmt_gulp -watch="C:\go\github.com\hackborn\ghost" -run="ghost.exe"*
 
 ## design
 
