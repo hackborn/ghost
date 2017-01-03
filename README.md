@@ -25,7 +25,9 @@ Alternatively, you can specify an absolute path to a custom configuration file, 
 
 ## design
 
-At heart it's a simple pipeline processor, where the pipeline is composed of any number of nodes run in series. There are currently two types of nodes: Watch, which watches a folder, and Exec, which runs a command. There's an additional node called Host, which is actually an Exec node configured to automatically run and rerun the Exec command.
+At heart it's a simple pipeline processor, where the pipeline is composed of any number of nodes run in series. There are currently two types of nodes: Watch, which fires a message in response to changes in a folder tree; and Exec, which runs a command. There's an additional node called Host, which is actually an Exec node configured to automatically run and rerun the Exec command.
+
+Each node runs one or more gofunctions and communicates via channels. The graph processing is not tied to any sort of loop, since either a node will autorun once the graph is started, or nodes will be fired in response to a file change.
 
 ## known issues
 
