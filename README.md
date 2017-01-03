@@ -1,6 +1,6 @@
 # ghost
 
-Ghost is a command-line app that can be used to provide auto-compile and hosting functionality, depending on configuration.
+Ghost is a command-line app that can be used to provide auto-compile and hosting functionality, depending on configuration. It was written in and for the Go language, but should be general enough to use in other contexts.
 
 ## to use
 
